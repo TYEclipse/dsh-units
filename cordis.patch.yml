@@ -1,0 +1,5 @@
+# dsh-units bundle patch: mounts this plugin into the profile as one layer row.
+# Configuration defaults live in the plugin schema (Config export).
+- insert:
+    - id: units
+      name: dsh-units
