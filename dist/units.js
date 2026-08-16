@@ -50,7 +50,7 @@ export const CATEGORIES = [
             L('m3', 'cubic meter', 1_000), L('l', 'liter', 1), L('ml', 'milliliter', 0.001),
             L('cm3', 'cubic centimeter', 0.001),
             L('gal', 'US gallon', 3.785411784), L('qt', 'US quart', 0.946352946),
-            L('pt', 'US pint', 0.473176473), L('cup', 'US cup', 0.24),
+            L('pint', 'US pint', 0.473176473), L('cup', 'US cup', 0.24),
             L('floz', 'US fluid ounce', 0.0295735295625), L('tbsp', 'tablespoon (US)', 0.01478676478125),
             L('tsp', 'teaspoon (US)', 0.00492892159375),
         ],
@@ -114,7 +114,80 @@ export const CATEGORIES = [
             L('hz', 'hertz', 1), L('rpm', 'revolution per minute', 1 / 60),
         ],
     },
+    {
+        // CSS/print typography at the standard 96 DPI reference: 1 pt = 1/72 in,
+        // 1 px = 1/96 in, 1 pc (pica) = 12 pt. em/rem are resolved against the
+        // common 16 px browser default base font size (a documented assumption).
+        id: 'typography', name: 'typography (CSS / print)', base: 'pixel (96 dpi)', kind: 'linear',
+        units: [
+            L('px', 'pixel (96 dpi)', 1), L('pt', 'point (1/72 inch)', 96 / 72),
+            L('pc', 'pica (12 pt)', 16), L('em', 'em (16 px base font)', 16),
+            L('rem', 'rem (root em, 16 px base)', 16),
+        ],
+    },
+    {
+        // Fuel economy is reciprocal: L/100km and km/L are inverse-style measures
+        // versus miles per gallon, so it gets its own conversion kind.
+        id: 'fuel', name: 'fuel economy', base: 'liter per 100 km', kind: 'fuel',
+        units: [
+            { symbol: 'l/100km', name: 'liters per 100 km' },
+            { symbol: 'l/km', name: 'liters per km' },
+            { symbol: 'mpg', name: 'miles per US gallon' },
+            { symbol: 'mpg(uk)', name: 'miles per imperial (UK) gallon' },
+            { symbol: 'km/l', name: 'kilometers per liter' },
+        ],
+    },
 ];
+/** Exact fuel-economy anchors: US gallon = 3.785411784 L, imperial gallon =
+ * 4.54609 L, mile = 1.609344 km. L/100km per 1 mpg = 100 × gallon / mile. */
+const L100KM_PER_MPG_US = (100 * 3.785411784) / 1.609344; // ≈ 235.214583
+const L100KM_PER_MPG_UK = (100 * 4.54609) / 1.609344; // ≈ 282.480936
+/** Fuel economy → base (L/100km). */
+function fuelToBase(value, symbol) {
+    switch (symbol) {
+        case 'l/100km': return value;
+        case 'l/km': return value * 100;
+        case 'mpg': return L100KM_PER_MPG_US / value;
+        case 'mpg(uk)': return L100KM_PER_MPG_UK / value;
+        case 'km/l': return 100 / value;
+        default: throw new Error(`internal: unsupported fuel unit "${symbol}"`);
+    }
+}
+/** Base (L/100km) → fuel economy unit. */
+function fuelFromBase(value, symbol) {
+    switch (symbol) {
+        case 'l/100km': return value;
+        case 'l/km': return value / 100;
+        case 'mpg': return L100KM_PER_MPG_US / value;
+        case 'mpg(uk)': return L100KM_PER_MPG_UK / value;
+        case 'km/l': return 100 / value;
+        default: throw new Error(`internal: unsupported fuel unit "${symbol}"`);
+    }
+}
+/** Human-readable recipe of a unit → base step (x = input value). */
+function fuelToBaseText(symbol) {
+    switch (symbol) {
+        case 'l/km': return 'x × 100';
+        case 'mpg': return `${roundForFormula(L100KM_PER_MPG_US)} ÷ x`;
+        case 'mpg(uk)': return `${roundForFormula(L100KM_PER_MPG_UK)} ÷ x`;
+        case 'km/l': return '100 ÷ x';
+        default: return 'x';
+    }
+}
+/** Human-readable recipe of a base → unit step (x = base value). */
+function fuelFromBaseText(symbol) {
+    switch (symbol) {
+        case 'l/km': return 'x ÷ 100';
+        case 'mpg': return `${roundForFormula(L100KM_PER_MPG_US)} ÷ x`;
+        case 'mpg(uk)': return `${roundForFormula(L100KM_PER_MPG_UK)} ÷ x`;
+        case 'km/l': return '100 ÷ x';
+        default: return 'x';
+    }
+}
+/** Round a constant for display inside a formula string. */
+function roundForFormula(value) {
+    return String(Number(value.toFixed(6)));
+}
 /**
  * Alias table: normalized user input → canonical unit symbol.
  * Normalization lowercases, trims, strips spaces and the degree sign, and
@@ -158,7 +231,7 @@ const ALIASES = new Map([
     ['cm3', 'cm3'], ['cc', 'cm3'], ['cubiccentimeter', 'cm3'],
     ['gal', 'gal'], ['gallon', 'gal'], ['gallons', 'gal'],
     ['qt', 'qt'], ['quart', 'qt'], ['quarts', 'qt'],
-    ['pt', 'pt'], ['pint', 'pt'], ['pints', 'pt'],
+    ['pint', 'pint'], ['pints', 'pint'],
     ['cup', 'cup'], ['cups', 'cup'],
     ['floz', 'floz'], ['fluidounce', 'floz'], ['fluidounces', 'floz'],
     ['tbsp', 'tbsp'], ['tablespoon', 'tbsp'], ['tablespoons', 'tbsp'],
@@ -220,6 +293,21 @@ const ALIASES = new Map([
     ['khz', 'khz'], ['kilohertz', 'khz'],
     ['hz', 'hz'], ['hertz', 'hz'],
     ['rpm', 'rpm'],
+    // typography (CSS / print)
+    ['px', 'px'], ['pixel', 'px'], ['pixels', 'px'],
+    ['pt', 'pt'], ['point', 'pt'], ['points', 'pt'],
+    ['pc', 'pc'], ['pica', 'pc'], ['picas', 'pc'],
+    ['em', 'em'], ['ems', 'em'],
+    ['rem', 'rem'], ['rems', 'rem'],
+    // fuel economy
+    ['l/100km', 'l/100km'], ['l100km', 'l/100km'],
+    ['litersper100km', 'l/100km'], ['litresper100km', 'l/100km'],
+    ['litersper100kilometers', 'l/100km'],
+    ['l/km', 'l/km'], ['lkm', 'l/km'], ['litersperkm', 'l/km'], ['litersperkilometer', 'l/km'],
+    ['mpg', 'mpg'], ['usmpg', 'mpg'], ['mpgus', 'mpg'], ['mpg(us)', 'mpg'],
+    ['mpg(uk)', 'mpg(uk)'], ['mpguk', 'mpg(uk)'], ['ukmpg', 'mpg(uk)'], ['imperialmpg', 'mpg(uk)'],
+    ['km/l', 'km/l'], ['kml', 'km/l'], ['kmpl', 'km/l'],
+    ['kilometersperliter', 'km/l'], ['kmperliter', 'km/l'],
 ]);
 /** Normalize raw user input into an alias-table key. */
 function normalize(raw) {
@@ -237,7 +325,7 @@ export function resolveUnit(raw) {
     const symbol = ALIASES.get(key);
     if (symbol === undefined) {
         throw new Error(`unknown unit "${raw}". Use list_units to see supported units ` +
-            `(length, mass, temperature, area, volume, speed, time, data, pressure, energy, angle, frequency)`);
+            `(${CATEGORIES.map((cat) => cat.id).join(', ')})`);
     }
     const category = CATEGORIES.find((cat) => cat.units.some((unit) => unit.symbol === symbol));
     if (category === undefined) {
@@ -306,6 +394,10 @@ export function convert(value, fromRaw, toRaw, maxDecimals = 6) {
     if (from.category.kind === 'temperature') {
         result = celsiusTo(toCelsius(value, from.unit.symbol), to.unit.symbol);
         formula = TEMP_FORMULAS[`${from.unit.symbol}->${to.unit.symbol}`] ?? '× 1';
+    }
+    else if (from.category.kind === 'fuel') {
+        result = fuelFromBase(fuelToBase(value, from.unit.symbol), to.unit.symbol);
+        formula = `${fuelToBaseText(from.unit.symbol)} → ${fuelFromBaseText(to.unit.symbol)}`;
     }
     else {
         const fromFactor = from.unit.factor;

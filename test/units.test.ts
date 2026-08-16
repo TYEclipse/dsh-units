@@ -67,6 +67,50 @@ describe('temperature (affine)', () => {
   })
 })
 
+describe('typography (linear, 96 dpi)', () => {
+  it('converts px/pt/pc with exact print ratios', () => {
+    expect(convert(16, 'px', 'pt').result).toBe(12)
+    expect(convert(72, 'pt', 'px').result).toBe(96)
+    expect(convert(1, 'pc', 'pt').result).toBe(12)
+    expect(convert(2, 'pt', 'px').result).toBe(2.666667)
+  })
+
+  it('converts em/rem against the 16 px base font', () => {
+    expect(convert(2, 'em', 'px').result).toBe(32)
+    expect(convert(16, 'px', 'em').result).toBe(1)
+    expect(convert(1.5, 'rem', 'pt').result).toBe(18)
+  })
+
+  it('treats "pt" as point (not pint) and keeps pint resolvable', () => {
+    expect(resolveUnit('pt').category.id).toBe('typography')
+    expect(resolveUnit('pt').unit.symbol).toBe('pt')
+    expect(resolveUnit('pint').category.id).toBe('volume')
+    expect(convert(1, 'pint', 'l').result).toBe(0.473176)
+  })
+})
+
+describe('fuel economy (reciprocal)', () => {
+  it('converts mpg to L/100km with exact anchors', () => {
+    expect(convert(20, 'mpg', 'l/100km').result).toBe(11.760729)
+    expect(convert(10, 'mpg(uk)', 'l/100km').result).toBe(28.248094)
+    expect(convert(1, 'mpg', 'km/l').result).toBe(0.425144)
+  })
+
+  it('converts L/100km and km/L', () => {
+    expect(convert(1, 'l/100km', 'km/l').result).toBe(100)
+    expect(convert(8.5, 'km/l', 'l/100km').result).toBe(11.764706)
+    expect(convert(1, 'km/l', 'mpg').result).toBe(2.352146)
+    expect(convert(8.5, 'km/l', 'mpg(uk)').result).toBe(24.01088)
+  })
+
+  it('accepts common aliases and reports a readable formula', () => {
+    expect(convert(20, 'usmpg', 'litersper100km').result).toBe(11.760729)
+    expect(convert(20, 'mpg', 'km/l').result).toBe(8.502874)
+    expect(convert(20, 'UK mpg', 'kmpl').result).toBe(7.080124)
+    expect(convert(20, 'mpg', 'l/100km').formula).toBe('235.214583 ÷ x → x')
+  })
+})
+
 describe('aliases and normalization', () => {
   it('accepts full names, plurals, case and degree signs', () => {
     expect(convert(1, 'miles', 'kilometers').result).toBe(1.609344)
@@ -118,9 +162,9 @@ describe('resolveUnit', () => {
 })
 
 describe('listUnits', () => {
-  it('lists all 12 categories without a filter', () => {
+  it('lists all 14 categories without a filter', () => {
     const all = listUnits()
-    expect(all).toHaveLength(12)
+    expect(all).toHaveLength(14)
     expect(all.map((cat) => cat.id)).toEqual(CATEGORIES.map((cat) => cat.id))
   })
 

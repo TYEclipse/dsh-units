@@ -6,7 +6,8 @@
  *                  length, mass, temperature (affine C/F/K), area, volume
  *                  (incl. US cooking units), speed, time duration, data
  *                  size/transfer (decimal MB vs binary MiB), pressure,
- *                  energy, angle, frequency.
+ *                  energy, angle, frequency, typography (px/pt/em/rem),
+ *                  fuel economy (L/100km ↔ mpg ↔ km/L, reciprocal).
  *   list_units   — discover every supported category, unit symbol and name.
  *
  * Safety model: everything is pure synchronous math over a static unit
