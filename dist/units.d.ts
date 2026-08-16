@@ -20,8 +20,11 @@ export interface Category {
     id: string;
     name: string;
     base: string;
-    /** 'linear' multiplies through the base unit; 'temperature' is affine. */
-    kind: 'linear' | 'temperature';
+    /**
+     * 'linear' multiplies through the base unit; 'temperature' is affine;
+     * 'fuel' is reciprocal (liters per 100 km vs. miles per gallon).
+     */
+    kind: 'linear' | 'temperature' | 'fuel';
     units: UnitDef[];
 }
 /** The static unit table: 12 categories, no external data. */

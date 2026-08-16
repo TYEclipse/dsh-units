@@ -1,7 +1,7 @@
 {
   "name": "dsh-units",
-  "version": "0.1.0",
-  "description": "Unit conversion toolbox for DeepSeek Harness (dsh): length, mass, temperature, area, volume (incl. cooking), speed, time, data sizes (decimal MB vs binary MiB), pressure, energy, angle, frequency — zero runtime dependencies",
+  "version": "0.2.0",
+  "description": "Unit conversion toolbox for DeepSeek Harness (dsh): length, mass, temperature, area, volume (incl. cooking), speed, time, data sizes (decimal MB vs binary MiB), pressure, energy, angle, frequency, typography (px/pt/em/rem), fuel economy (mpg ↔ L/100km) — zero runtime dependencies",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -25,7 +25,10 @@
     "unit-conversion",
     "converter",
     "data-sizes",
-    "measurement"
+    "measurement",
+    "typography",
+    "css-units",
+    "fuel-economy"
   ],
   "license": "MIT",
   "repository": {

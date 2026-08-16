@@ -37,9 +37,10 @@ export function buildUnitsTools(config: ResolvedConfig): ToolSet {
     name: 'convert_unit',
     description: 'Convert a numeric value between two units of the same category: length, mass, temperature, ' +
       'area, volume (incl. cooking), speed, time duration, data size/transfer (decimal MB vs binary MiB), ' +
-      'pressure, energy, angle, or frequency. Handles affine temperatures (C/F/K) correctly and keeps full ' +
-      'precision internally, rounding only for display. Pure math, no network. Use list_units to discover ' +
-      'accepted unit symbols and names.',
+      'pressure, energy, angle, frequency, typography (px/pt/em/rem at 96 dpi, 16 px base font), or fuel ' +
+      'economy (L/100km ↔ mpg US/UK ↔ km/L). Handles affine temperatures (C/F/K) and reciprocal fuel ' +
+      'economy correctly, keeping full precision internally and rounding only for display. Pure math, no ' +
+      'network. Use list_units to discover accepted unit symbols and names.',
     parameters: {
       value: { type: 'number', required: true, description: 'Numeric value to convert, e.g. 100, -40, 1.5.' },
       from: { type: 'string', required: true, description: 'Source unit symbol or name, e.g. "km", "miles", "MB", "MiB", "celsius", "km/h".' },

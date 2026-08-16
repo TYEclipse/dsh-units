@@ -42,7 +42,7 @@ describe('buildUnitsTools', () => {
 
   it('list_units executes with and without a filter', async () => {
     const all = await tools.list_units.execute({})
-    expect(all.categories).toHaveLength(12)
+    expect(all.categories).toHaveLength(14)
     const one = await tools.list_units.execute({ category: 'data' })
     expect(one.categories).toHaveLength(1)
     expect(one.categories[0]?.id).toBe('data')
