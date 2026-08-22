@@ -111,6 +111,57 @@ describe('fuel economy (reciprocal)', () => {
   })
 })
 
+describe('power (mechanics, linear)', () => {
+  it('distinguishes the three horsepower definitions', () => {
+    expect(convert(1, 'hp', 'w').result).toBe(745.699872) // mechanical = 550 ft·lbf/s
+    expect(convert(1, 'hp(m)', 'w').result).toBe(735.49875) // metric PS = 75 kgf·m/s
+    expect(convert(1, 'hp(e)', 'w').result).toBe(746) // electric
+    expect(convert(1, 'hp', 'hp(m)').result).toBe(1.01387)
+  })
+
+  it('converts watts, kilowatts and BTU per hour', () => {
+    expect(convert(1, 'kw', 'hp').result).toBe(1.341022)
+    expect(convert(1, 'kw', 'btu/h').result).toBe(3412.141633)
+    expect(convert(550, 'ftlb/s', 'hp').result).toBe(1)
+  })
+
+  it('accepts PS/CV aliases for metric horsepower', () => {
+    expect(convert(1, 'ps', 'w').result).toBe(735.49875)
+    expect(convert(1, 'cv', 'hp').result).toBe(0.98632)
+  })
+})
+
+describe('force (linear, standard gravity)', () => {
+  it('converts pound-force and kilogram-force to newtons', () => {
+    expect(convert(1, 'lbf', 'n').result).toBe(4.448222)
+    expect(convert(1, 'kgf', 'n').result).toBe(9.80665)
+    expect(convert(1, 'lbf', 'kgf').result).toBe(0.453592)
+    expect(convert(1, 'n', 'dyn').result).toBe(100_000)
+  })
+
+  it('reaches kilonewton by full name (kn input stays knot)', () => {
+    expect(convert(1, 'kilonewton', 'n').result).toBe(1_000)
+    expect(resolveUnit('kn').category.id).toBe('speed')
+    expect(resolveUnit('kn').unit.symbol).toBe('knot')
+  })
+})
+
+describe('torque (force × length)', () => {
+  it('converts pound-force foot/inches to newton meters', () => {
+    expect(convert(1, 'lbfft', 'n.m').result).toBe(1.355818)
+    expect(convert(1, 'kgf.m', 'n.m').result).toBe(9.80665)
+    expect(convert(12, 'lbfin', 'lbfft').result).toBe(1)
+    expect(convert(1, 'lbfft', 'kgf.m').result).toBe(0.138255)
+  })
+
+  it('keeps "nm" as nanometer and resolves "n.m"/"ftlb" as torque', () => {
+    expect(resolveUnit('nm').category.id).toBe('length')
+    expect(resolveUnit('n.m').category.id).toBe('torque')
+    expect(resolveUnit('n·m').category.id).toBe('torque')
+    expect(convert(1, 'ftlb', 'n.m').result).toBe(1.355818)
+  })
+})
+
 describe('aliases and normalization', () => {
   it('accepts full names, plurals, case and degree signs', () => {
     expect(convert(1, 'miles', 'kilometers').result).toBe(1.609344)
@@ -162,9 +213,9 @@ describe('resolveUnit', () => {
 })
 
 describe('listUnits', () => {
-  it('lists all 14 categories without a filter', () => {
+  it('lists all 17 categories without a filter', () => {
     const all = listUnits()
-    expect(all).toHaveLength(14)
+    expect(all).toHaveLength(17)
     expect(all.map((cat) => cat.id)).toEqual(CATEGORIES.map((cat) => cat.id))
   })
 

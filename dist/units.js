@@ -9,7 +9,7 @@
  * @module dsh-units/units
  */
 const L = (symbol, name, factor) => ({ symbol, name, factor });
-/** The static unit table: 12 categories, no external data. */
+/** The static unit table: 17 categories, no external data. */
 export const CATEGORIES = [
     {
         id: 'length', name: 'length', base: 'meter', kind: 'linear',
@@ -135,6 +135,42 @@ export const CATEGORIES = [
             { symbol: 'mpg', name: 'miles per US gallon' },
             { symbol: 'mpg(uk)', name: 'miles per imperial (UK) gallon' },
             { symbol: 'km/l', name: 'kilometers per liter' },
+        ],
+    },
+    {
+        // Mechanical power: three different "horsepower" definitions coexist —
+        // mechanical (550 ft·lbf/s), metric (PS, 75 kgf·m/s) and electric (746 W).
+        id: 'power', name: 'power', base: 'watt', kind: 'linear',
+        units: [
+            L('mw', 'megawatt', 1e6), L('kw', 'kilowatt', 1e3), L('w', 'watt', 1),
+            L('hp', 'horsepower (mechanical)', 550 * 0.45359237 * 9.80665 * 0.3048),
+            L('hp(m)', 'metric horsepower (PS)', 735.49875),
+            L('hp(e)', 'electric horsepower', 746),
+            L('btu/h', 'BTU per hour (IT)', 1055.05585262 / 3600),
+            L('ftlb/s', 'foot-pound per second', 0.45359237 * 9.80665 * 0.3048),
+        ],
+    },
+    {
+        // Force: lbf and kgf are weight-based forces at standard gravity
+        // (g₀ = 9.80665 m/s²). "kn" as typed input resolves to knot (speed) —
+        // kilonewton is reachable by its full name (see aliases).
+        id: 'force', name: 'force', base: 'newton', kind: 'linear',
+        units: [
+            L('kn', 'kilonewton', 1e3), L('n', 'newton', 1), L('dyn', 'dyne', 1e-5),
+            L('lbf', 'pound-force', 0.45359237 * 9.80665),
+            L('kgf', 'kilogram-force (kp)', 9.80665),
+            L('gf', 'gram-force', 0.00980665),
+        ],
+    },
+    {
+        // Torque: force × length. The symbol is "n.m" because "nm" is the
+        // nanometer in the length category — resolve by symbol or full name.
+        id: 'torque', name: 'torque', base: 'newton meter', kind: 'linear',
+        units: [
+            L('n.m', 'newton meter', 1),
+            L('kgf.m', 'kilogram-force meter', 9.80665),
+            L('lbfft', 'pound-force foot', 0.45359237 * 9.80665 * 0.3048),
+            L('lbfin', 'pound-force inch', (0.45359237 * 9.80665 * 0.3048) / 12),
         ],
     },
 ];
@@ -308,6 +344,31 @@ const ALIASES = new Map([
     ['mpg(uk)', 'mpg(uk)'], ['mpguk', 'mpg(uk)'], ['ukmpg', 'mpg(uk)'], ['imperialmpg', 'mpg(uk)'],
     ['km/l', 'km/l'], ['kml', 'km/l'], ['kmpl', 'km/l'],
     ['kilometersperliter', 'km/l'], ['kmperliter', 'km/l'],
+    // power
+    ['mw', 'mw'], ['megawatt', 'mw'], ['megawatts', 'mw'],
+    ['kw', 'kw'], ['kilowatt', 'kw'], ['kilowatts', 'kw'],
+    ['w', 'w'], ['watt', 'w'], ['watts', 'w'],
+    ['hp', 'hp'], ['horsepower', 'hp'],
+    ['hp(m)', 'hp(m)'], ['ps', 'hp(m)'], ['cv', 'hp(m)'], ['metrichorsepower', 'hp(m)'],
+    ['hp(e)', 'hp(e)'], ['ehp', 'hp(e)'], ['electrichorsepower', 'hp(e)'],
+    ['btu/h', 'btu/h'], ['btuh', 'btu/h'], ['btuperhour', 'btu/h'],
+    ['ftlb/s', 'ftlb/s'], ['ftlbs', 'ftlb/s'], ['ftlbfs', 'ftlb/s'],
+    // force
+    ['kilonewton', 'kn'], ['kilonewtons', 'kn'], // "kn" input stays the speed alias (knot)
+    ['n', 'n'], ['newton', 'n'], ['newtons', 'n'],
+    ['dyn', 'dyn'], ['dyne', 'dyn'], ['dynes', 'dyn'],
+    ['lbf', 'lbf'], ['poundforce', 'lbf'], ['poundforces', 'lbf'], ['lbforce', 'lbf'],
+    ['kgf', 'kgf'], ['kilogramforce', 'kgf'], ['kilogramforces', 'kgf'], ['kgforce', 'kgf'],
+    ['kp', 'kgf'], ['kilopond', 'kgf'], ['kiloponds', 'kgf'],
+    ['gf', 'gf'], ['gramforce', 'gf'], ['gramforces', 'gf'],
+    // torque
+    ['n.m', 'n.m'], ['n·m', 'n.m'],
+    ['newtonmeter', 'n.m'], ['newtonmeters', 'n.m'], ['newtonmetre', 'n.m'], ['newtonmetres', 'n.m'],
+    ['newton-meter', 'n.m'], ['newton-meters', 'n.m'],
+    ['kgf.m', 'kgf.m'], ['kgf·m', 'kgf.m'], ['kgfm', 'kgf.m'],
+    ['kilogramforcemeter', 'kgf.m'], ['kilogramforcemeters', 'kgf.m'],
+    ['lbfft', 'lbfft'], ['ftlb', 'lbfft'], ['footpound', 'lbfft'], ['footpounds', 'lbfft'], ['lb-ft', 'lbfft'],
+    ['lbfin', 'lbfin'], ['lbf.in', 'lbfin'],
 ]);
 /** Normalize raw user input into an alias-table key. */
 function normalize(raw) {

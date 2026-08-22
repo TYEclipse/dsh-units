@@ -1,10 +1,10 @@
 # dsh-units 📐
 
-Unit conversion toolbox for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (dsh) — **14 categories, zero runtime dependencies**, pure arithmetic over a static unit table (no network, no filesystem, no code execution).
+Unit conversion toolbox for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (dsh) — **17 categories, zero runtime dependencies**, pure arithmetic over a static unit table (no network, no filesystem, no code execution).
 
-When your agent needs to answer *"how many miles is 100 km?"*, *"is 1 MB bigger than 1 MiB?"*, *"what's 350°F in Celsius?"*, *"how many tablespoons in 2 cups?"*, *"16px is how many pt?"* or *"20 mpg in L/100km?"* — instead of doing error-prone mental math, it can call these tools and read exact results.
+When your agent needs to answer *"how many miles is 100 km?"*, *"is 1 MB bigger than 1 MiB?"*, *"what's 350°F in Celsius?"*, *"how many tablespoons in 2 cups?"*, *"16px is how many pt?"*, *"20 mpg in L/100km?"* or *"150 kW is how much mechanical horsepower?"* — instead of doing error-prone mental math, it can call these tools and read exact results.
 
-> 中文简介：dsh-units 是 DeepSeek Harness 的单位换算工具箱插件，覆盖长度、质量、温度、面积、体积（含美制烹饪单位）、速度、时长、数据大小（十进制 MB 与二进制 MiB 严格区分）、压强、能量、角度、频率、排版印刷（px/pt/em/rem）、油耗（L/100km ↔ mpg ↔ km/L）共 14 个类别，零运行时依赖、纯算术实现，无网络无副作用。让 Agent 不再心算——特别是"MB/MiB 混淆""华氏摄氏互转""加仑换升""mpg 与 L/100km 互算"这类高频出错点，直接调用工具拿精确结果。
+> 中文简介：dsh-units 是 DeepSeek Harness 的单位换算工具箱插件，覆盖长度、质量、温度、面积、体积（含美制烹饪单位）、速度、时长、数据大小（十进制 MB 与二进制 MiB 严格区分）、压强、能量、角度、频率、功率（机械/公制/电动马力严格区分）、力、扭矩、排版印刷（px/pt/em/rem）、油耗（L/100km ↔ mpg ↔ km/L）共 17 个类别，零运行时依赖、纯算术实现，无网络无副作用。让 Agent 不再心算——特别是"MB/MiB 混淆""华氏摄氏互转""加仑换升""mpg 与 L/100km 互算""三种马力混淆"这类高频出错点，直接调用工具拿精确结果。
 
 ## Why it exists
 
@@ -17,7 +17,7 @@ When your agent needs to answer *"how many miles is 100 km?"*, *"is 1 MB bigger 
 | Tool | What it does |
 |------|--------------|
 | `convert_unit` | Convert `value` from one unit to another within a category. Accepts symbols or full names (case-insensitive, °C, m², "miles", "MiB" all work). Rejects unknown units and cross-category pairs with clear errors. |
-| `list_units` | List all 14 categories with every unit symbol and full name (optionally one category, e.g. `"data"` or `"temperature"`) — for discovering the exact symbols to pass to `convert_unit`. |
+| `list_units` | List all 17 categories with every unit symbol and full name (optionally one category, e.g. `"data"` or `"temperature"`) — for discovering the exact symbols to pass to `convert_unit`. |
 
 ## Supported categories
 
@@ -37,8 +37,13 @@ When your agent needs to answer *"how many miles is 100 km?"*, *"is 1 MB bigger 
 | frequency / rotation | ghz, mhz, khz, hz, rpm |
 | typography (CSS / print) | px, pt, pc (pica), em, rem — 96 dpi reference, 16 px base font for em/rem |
 | fuel economy | l/100km, l/km, mpg (US), mpg(uk) (imperial), km/l — reciprocal, **mpg ≠ linear** |
+| power | mw, kw, w, hp (mechanical = 550 ft·lbf/s), hp(m) (metric PS), hp(e) (electric 746 W), btu/h (IT), ftlb/s — **three different horsepower definitions** |
+| force | kn, n, dyn, lbf, kgf (kp), gf — lbf/kgf are weight-based at standard gravity 9.80665 m/s² |
+| torque | n.m, kgf.m, lbfft (pound-force foot), lbfin (pound-force inch) — force × length |
 
 > **v0.2.0 note:** `pt` now means the typography *point* (previously the US *pint*). Use `pint` for pints — `convert_unit { value: 1, from: "pint", to: "l" }` still works. `em`/`rem` assume the common 16 px browser default base font size; `px` assumes 96 dpi (documented assumptions, not physical absolutes).
+>
+> **v0.3.0 note (symbol disambiguation):** typed input `kn` resolves to *knot* (speed) — reach kilonewton by its full name (`convert_unit { value: 1, from: "kilonewton", to: "n" }`). Likewise `nm` is the *nanometer* (length); the torque newton meter uses the symbol `n.m` (also `n·m` or full names).
 
 ## Install
 
@@ -72,6 +77,12 @@ convert_unit { value: 16, from: "px", to: "pt" }
 
 convert_unit { value: 20, from: "mpg", to: "l/100km" }
 → 20 mpg = 11.760729 l/100km (fuel economy, 235.214583 ÷ x → x)
+
+convert_unit { value: 150, from: "kw", to: "hp" }
+→ 150 kw = 201.153313 hp (power, × 1.341022)
+
+convert_unit { value: 1, from: "lbfft", to: "n.m" }
+→ 1 lbfft = 1.355818 n.m (torque, × 1.355818)
 
 list_units { category: "volume" }
 → volume (volume (incl. cooking), base: liter): m3 = cubic meter | l = liter | ...
