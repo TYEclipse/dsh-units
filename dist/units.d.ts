@@ -27,7 +27,7 @@ export interface Category {
     kind: 'linear' | 'temperature' | 'fuel';
     units: UnitDef[];
 }
-/** The static unit table: 12 categories, no external data. */
+/** The static unit table: 17 categories, no external data. */
 export declare const CATEGORIES: readonly Category[];
 /** Find the category and unit for a user-supplied unit string. */
 export declare function resolveUnit(raw: string): {
