@@ -162,6 +162,67 @@ describe('torque (force × length)', () => {
   })
 })
 
+describe('data transfer rate (bit vs byte, decimal vs binary)', () => {
+  it('converts the classic Mbps → MB/s case exactly', () => {
+    expect(convert(100, 'Mbps', 'MB/s').result).toBe(12.5)
+    expect(convert(100, 'mbit/s', 'mb/s').result).toBe(12.5)
+    expect(convert(1, 'MiB/s', 'Mbit/s').result).toBe(8.388608)
+  })
+
+  it('converts across decimal and binary rates', () => {
+    expect(convert(1, 'Gbit/s', 'MiB/s').result).toBe(119.20929)
+    expect(convert(500, 'MB/s', 'Gbit/s').result).toBe(4)
+    expect(convert(1, 'Tbit/s', 'GB/s').result).toBe(125)
+    expect(convert(1, 'KiB/s', 'kB/s').result).toBe(1.024)
+    expect(convert(1, 'TiB/s', 'TB/s').result).toBe(1.099512)
+  })
+
+  it('keeps rates a separate category from sizes and documents b/s vs bps', () => {
+    expect(() => convert(1, 'mb/s', 'mb')).toThrow(/must share a category/)
+    expect(resolveUnit('mbps').unit.symbol).toBe('mbit/s')
+    expect(resolveUnit('MB/s').unit.symbol).toBe('mb/s')
+    expect(resolveUnit('bps').unit.symbol).toBe('bit/s')
+    expect(resolveUnit('kilobytepersecond').category.id).toBe('datarate')
+  })
+})
+
+describe('acceleration (standard gravity)', () => {
+  it('converts g-force against g₀ = 9.80665 m/s²', () => {
+    expect(convert(1, 'g0', 'm/s2').result).toBe(9.80665)
+    expect(convert(1, 'g0', 'ft/s2').result).toBe(32.174049)
+    expect(convert(1, 'm/s2', 'g0').result).toBe(0.101972)
+    expect(convert(0.5, 'g0', 'mph/s').result).toBe(10.968426)
+  })
+
+  it('accepts notation and name aliases', () => {
+    expect(convert(1, 'gravity', 'm/s²').result).toBe(9.80665)
+    expect(convert(60, 'mph/s', 'm/s2').result).toBe(26.8224)
+    expect(convert(100, 'ft/s2', 'm/s2').result).toBe(30.48)
+    expect(convert(9.8, 'm/s2', 'g-force').result).toBe(0.999322)
+  })
+
+  it('keeps "g" as gram and reaches gravity by name', () => {
+    expect(resolveUnit('g').category.id).toBe('mass')
+    expect(resolveUnit('g0').category.id).toBe('acceleration')
+    expect(resolveUnit('g-force').unit.symbol).toBe('g0')
+  })
+})
+
+describe('illumination', () => {
+  it('converts foot-candles and phot to lux', () => {
+    expect(convert(1, 'fc', 'lx').result).toBe(10.76391)
+    expect(convert(100, 'lx', 'fc').result).toBe(9.290304)
+    expect(convert(1, 'ph', 'lx').result).toBe(10000)
+    expect(convert(1, 'klx', 'fc').result).toBe(92.90304)
+  })
+
+  it('accepts full names', () => {
+    expect(convert(20, 'footcandles', 'lux').result).toBe(215.278208)
+    expect(convert(500, 'lux', 'kilolux').result).toBe(0.5)
+    expect(resolveUnit('lumenspersquarefoot').unit.symbol).toBe('fc')
+  })
+})
+
 describe('aliases and normalization', () => {
   it('accepts full names, plurals, case and degree signs', () => {
     expect(convert(1, 'miles', 'kilometers').result).toBe(1.609344)
@@ -213,9 +274,9 @@ describe('resolveUnit', () => {
 })
 
 describe('listUnits', () => {
-  it('lists all 17 categories without a filter', () => {
+  it('lists all 20 categories without a filter', () => {
     const all = listUnits()
-    expect(all).toHaveLength(17)
+    expect(all).toHaveLength(20)
     expect(all.map((cat) => cat.id)).toEqual(CATEGORIES.map((cat) => cat.id))
   })
 

@@ -36,8 +36,9 @@ export function buildUnitsTools(config: ResolvedConfig): ToolSet {
   const convert_unit = defineTool({
     name: 'convert_unit',
     description: 'Convert a numeric value between two units of the same category: length, mass, temperature, ' +
-      'area, volume (incl. cooking), speed, time duration, data size/transfer (decimal MB vs binary MiB), ' +
-      'pressure, energy, angle, frequency, power (mechanical/metric/electric horsepower, BTU/h), force ' +
+      'area, volume (incl. cooking), speed, time duration, data size (decimal MB vs binary MiB), data transfer ' +
+      'rate (Mbps vs MB/s, MiB/s), acceleration (m/s², g-force), illumination (lux, foot-candles), pressure, ' +
+      'energy, angle, frequency, power (mechanical/metric/electric horsepower, BTU/h), force ' +
       '(newton, pound-force, kgf), torque (newton meter, pound-force foot), typography (px/pt/em/rem at 96 ' +
       'dpi, 16 px base font), or fuel economy (L/100km ↔ mpg US/UK ↔ km/L). Handles affine temperatures ' +
       '(C/F/K) and reciprocal fuel economy correctly, keeping full precision internally and rounding only ' +

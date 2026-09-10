@@ -1,10 +1,10 @@
 # dsh-units 📐
 
-Unit conversion toolbox for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (dsh) — **17 categories, zero runtime dependencies**, pure arithmetic over a static unit table (no network, no filesystem, no code execution).
+Unit conversion toolbox for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (dsh) — **20 categories, zero runtime dependencies**, pure arithmetic over a static unit table (no network, no filesystem, no code execution).
 
-When your agent needs to answer *"how many miles is 100 km?"*, *"is 1 MB bigger than 1 MiB?"*, *"what's 350°F in Celsius?"*, *"how many tablespoons in 2 cups?"*, *"16px is how many pt?"*, *"20 mpg in L/100km?"* or *"150 kW is how much mechanical horsepower?"* — instead of doing error-prone mental math, it can call these tools and read exact results.
+When your agent needs to answer *"how many miles is 100 km?"*, *"is 1 MB bigger than 1 MiB?"*, *"is 100 Mbps the same as 100 MB/s?"*, *"what's 350°F in Celsius?"*, *"how many tablespoons in 2 cups?"*, *"16px is how many pt?"*, *"20 mpg in L/100km?"*, *"150 kW is how much mechanical horsepower?"* or *"how many g is 9.8 m/s²?"* — instead of doing error-prone mental math, it can call these tools and read exact results.
 
-> 中文简介：dsh-units 是 DeepSeek Harness 的单位换算工具箱插件，覆盖长度、质量、温度、面积、体积（含美制烹饪单位）、速度、时长、数据大小（十进制 MB 与二进制 MiB 严格区分）、压强、能量、角度、频率、功率（机械/公制/电动马力严格区分）、力、扭矩、排版印刷（px/pt/em/rem）、油耗（L/100km ↔ mpg ↔ km/L）共 17 个类别，零运行时依赖、纯算术实现，无网络无副作用。让 Agent 不再心算——特别是"MB/MiB 混淆""华氏摄氏互转""加仑换升""mpg 与 L/100km 互算""三种马力混淆"这类高频出错点，直接调用工具拿精确结果。
+> 中文简介：dsh-units 是 DeepSeek Harness 的单位换算工具箱插件，覆盖长度、质量、温度、面积、体积（含美制烹饪单位）、速度、时长、数据大小（十进制 MB 与二进制 MiB 严格区分）、数据传输速率（Mbps 与 MB/s 严格区分）、加速度（g-force）、照度（lux / 英尺烛光）、压强、能量、角度、频率、功率（机械/公制/电动马力严格区分）、力、扭矩、排版印刷（px/pt/em/rem）、油耗（L/100km ↔ mpg ↔ km/L）共 20 个类别，零运行时依赖、纯算术实现，无网络无副作用。让 Agent 不再心算——特别是"MB/MiB 混淆""100 Mbps 不等于 100 MB/s""华氏摄氏互转""加仑换升""mpg 与 L/100km 互算""三种马力混淆"这类高频出错点，直接调用工具拿精确结果。
 
 ## Why it exists
 
@@ -17,7 +17,7 @@ When your agent needs to answer *"how many miles is 100 km?"*, *"is 1 MB bigger 
 | Tool | What it does |
 |------|--------------|
 | `convert_unit` | Convert `value` from one unit to another within a category. Accepts symbols or full names (case-insensitive, °C, m², "miles", "MiB" all work). Rejects unknown units and cross-category pairs with clear errors. |
-| `list_units` | List all 17 categories with every unit symbol and full name (optionally one category, e.g. `"data"` or `"temperature"`) — for discovering the exact symbols to pass to `convert_unit`. |
+| `list_units` | List all 20 categories with every unit symbol and full name (optionally one category, e.g. `"data"` or `"temperature"`) — for discovering the exact symbols to pass to `convert_unit`. |
 
 ## Supported categories
 
@@ -30,7 +30,10 @@ When your agent needs to answer *"how many miles is 100 km?"*, *"is 1 MB bigger 
 | volume (incl. cooking) | m3, l, ml, cm3, gal, qt, pint, cup, floz, tbsp, tsp (US units) |
 | speed | km/h, m/s, mph, knot, ft/s |
 | time duration | yr (Julian, 365.25 d), wk, d, h, min, s, ms |
-| data size / transfer | tbit…bit, pb…b (decimal), pib…kib (binary) — **MB ≠ MiB** |
+| data size | tbit…bit, pb…b (decimal), pib…kib (binary) — **MB ≠ MiB** |
+| data transfer rate | tbit/s…bit/s (decimal bits), tb/s…b/s (decimal bytes), tib/s…kib/s (binary bytes) — **100 Mbps = 12.5 MB/s** |
+| acceleration | m/s2, g0 (standard gravity 9.80665 m/s²), ft/s2, mph/s — g-force & automotive |
+| illumination | klx, lx (lux), fc (foot-candle), ph (phot) — 1 fc = 10.76391 lx |
 | pressure | mpa, kpa, bar, atm, psi, mmhg, torr, pa |
 | energy | kwh, wh, kcal, kj, cal, j, ev |
 | angle | deg, rad, grad |
@@ -44,6 +47,8 @@ When your agent needs to answer *"how many miles is 100 km?"*, *"is 1 MB bigger 
 > **v0.2.0 note:** `pt` now means the typography *point* (previously the US *pint*). Use `pint` for pints — `convert_unit { value: 1, from: "pint", to: "l" }` still works. `em`/`rem` assume the common 16 px browser default base font size; `px` assumes 96 dpi (documented assumptions, not physical absolutes).
 >
 > **v0.3.0 note (symbol disambiguation):** typed input `kn` resolves to *knot* (speed) — reach kilonewton by its full name (`convert_unit { value: 1, from: "kilonewton", to: "n" }`). Likewise `nm` is the *nanometer* (length); the torque newton meter uses the symbol `n.m` (also `n·m` or full names).
+>
+> **v0.4.0 note (category split & disambiguation):** the old `data size / transfer` category is now **`data size`** (sizes only); rates live in **`data transfer rate`** — `mb/s` means megabyte per second (following `mb` = megabyte in the data table), while `mbps` / `mbit/s` mean megabit per second, so `100 Mbps → 12.5 MB/s` exactly. In acceleration, typed `g` stays the *gram* (mass) — gravity is `g0` / `gravity` / `g-force`; `gal` stays the US *gallon* (no galileo unit); `ph` is the *phot*, not pH.
 
 ## Install
 
@@ -64,10 +69,13 @@ The agent just calls the tools — no setup beyond installation:
 
 ```
 convert_unit { value: 100, from: "km", to: "mi" }
-→ 100 km = 62.137119 mi (length, × 0.621371)
+→ 100 km = 62.137119 mi (length, × 0.621371192237334)
 
 convert_unit { value: 500, from: "MiB", to: "MB" }
-→ 500 MiB = 524.288 MB (data size / transfer, × 1.048576)
+→ 500 mib = 524.288 mb (data size, × 1.048576)
+
+convert_unit { value: 100, from: "Mbps", to: "MB/s" }
+→ 100 mbit/s = 12.5 mb/s (data transfer rate, × 0.125)
 
 convert_unit { value: 350, from: "fahrenheit", to: "celsius" }
 → 350 f = 176.666667 c (temperature, (x − 32) × 5/9)
@@ -79,14 +87,22 @@ convert_unit { value: 20, from: "mpg", to: "l/100km" }
 → 20 mpg = 11.760729 l/100km (fuel economy, 235.214583 ÷ x → x)
 
 convert_unit { value: 150, from: "kw", to: "hp" }
-→ 150 kw = 201.153313 hp (power, × 1.341022)
+→ 150 kw = 201.153313 hp (power, × 1.3410220895950278)
 
 convert_unit { value: 1, from: "lbfft", to: "n.m" }
-→ 1 lbfft = 1.355818 n.m (torque, × 1.355818)
+→ 1 lbfft = 1.355818 n.m (torque, × 1.3558179483314003)
+
+convert_unit { value: 9.8, from: "m/s2", to: "g0" }
+→ 9.8 m/s2 = 0.999322 g0 (acceleration, × 0.10197162129779283)
+
+convert_unit { value: 1, from: "fc", to: "lx" }
+→ 1 fc = 10.76391 lx (illumination, × 10.763910416709722)
 
 list_units { category: "volume" }
 → volume (volume (incl. cooking), base: liter): m3 = cubic meter | l = liter | ...
 ```
+
+> All outputs above are captured from the built `dist/` (v0.4.0).
 
 ## Configuration
 

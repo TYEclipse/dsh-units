@@ -95,7 +95,7 @@ export const CATEGORIES: readonly Category[] = [
     ],
   },
   {
-    id: 'data', name: 'data size / transfer', base: 'bit', kind: 'linear',
+    id: 'data', name: 'data size', base: 'bit', kind: 'linear',
     units: [
       L('tbit', 'terabit', 1e12), L('gbit', 'gigabit', 1e9), L('mbit', 'megabit', 1e6),
       L('kbit', 'kilobit', 1e3), L('bit', 'bit', 1),
@@ -194,6 +194,48 @@ export const CATEGORIES: readonly Category[] = [
       L('kgf.m', 'kilogram-force meter', 9.80665),
       L('lbfft', 'pound-force foot', 0.45359237 * 9.80665 * 0.3048),
       L('lbfin', 'pound-force inch', (0.45359237 * 9.80665 * 0.3048) / 12),
+    ],
+  },
+  {
+    // Data transfer rate — NOT size. The classic mix-up: network speeds are
+    // decimal bits per second (100 Mbps), file transfers decimal bytes per
+    // second (12.5 MB/s), and binary prefixes (MiB/s) mean 1024-based rates.
+    // 'mb/s' follows the data category's rule that mb = megabyte; megabits
+    // are mbit/s (aliases: Mbps, kbps, …).
+    id: 'datarate', name: 'data transfer rate', base: 'bit per second', kind: 'linear',
+    units: [
+      L('tbit/s', 'terabit per second', 1e12), L('gbit/s', 'gigabit per second', 1e9),
+      L('mbit/s', 'megabit per second', 1e6), L('kbit/s', 'kilobit per second', 1e3),
+      L('bit/s', 'bit per second', 1),
+      L('tb/s', 'terabyte per second (decimal)', 8e12), L('gb/s', 'gigabyte per second (decimal)', 8e9),
+      L('mb/s', 'megabyte per second (decimal)', 8e6), L('kb/s', 'kilobyte per second (decimal)', 8e3),
+      L('b/s', 'byte per second', 8),
+      L('tib/s', 'tebibyte per second (binary)', 8 * 1024 ** 4),
+      L('gib/s', 'gibibyte per second (binary)', 8 * 1024 ** 3),
+      L('mib/s', 'mebibyte per second (binary)', 8 * 1024 ** 2),
+      L('kib/s', 'kibibyte per second (binary)', 8 * 1024),
+    ],
+  },
+  {
+    // Acceleration: standard gravity g₀ = 9.80665 m/s² is the reference behind
+    // every g-force figure. 'g' as typed input stays the gram (mass) — reach
+    // gravity via 'g0' / 'gravity' / 'g-force'.
+    id: 'acceleration', name: 'acceleration', base: 'meter per second squared', kind: 'linear',
+    units: [
+      L('m/s2', 'meter per second squared', 1),
+      L('g0', 'standard gravity (9.80665 m/s²)', 9.80665),
+      L('ft/s2', 'foot per second squared', 0.3048),
+      L('mph/s', 'mile per hour per second', 0.44704),
+    ],
+  },
+  {
+    // Illumination: lux (SI), foot-candle (1 lm/ft² — the photography unit)
+    // and phot. All pure ratios against lux.
+    id: 'illumination', name: 'illumination', base: 'lux', kind: 'linear',
+    units: [
+      L('klx', 'kilolux', 1e3), L('lx', 'lux (lumen per square meter)', 1),
+      L('fc', 'foot-candle (lumen per square foot)', 1 / 0.09290304),
+      L('ph', 'phot', 1e4),
     ],
   },
 ]
@@ -399,6 +441,32 @@ const ALIASES = new Map<string, string>([
   ['kilogramforcemeter', 'kgf.m'], ['kilogramforcemeters', 'kgf.m'],
   ['lbfft', 'lbfft'], ['ftlb', 'lbfft'], ['footpound', 'lbfft'], ['footpounds', 'lbfft'], ['lb-ft', 'lbfft'],
   ['lbfin', 'lbfin'], ['lbf.in', 'lbfin'],
+  // data transfer rate
+  ['bit/s', 'bit/s'], ['bits/s', 'bit/s'], ['bitpersecond', 'bit/s'], ['bitspersecond', 'bit/s'], ['bps', 'bit/s'],
+  ['kbit/s', 'kbit/s'], ['kbits/s', 'kbit/s'], ['kilobitpersecond', 'kbit/s'], ['kilobitspersecond', 'kbit/s'], ['kbps', 'kbit/s'],
+  ['mbit/s', 'mbit/s'], ['mbits/s', 'mbit/s'], ['megabitpersecond', 'mbit/s'], ['megabitspersecond', 'mbit/s'], ['mbps', 'mbit/s'],
+  ['gbit/s', 'gbit/s'], ['gbits/s', 'gbit/s'], ['gigabitpersecond', 'gbit/s'], ['gigabitspersecond', 'gbit/s'], ['gbps', 'gbit/s'],
+  ['tbit/s', 'tbit/s'], ['tbits/s', 'tbit/s'], ['terabitpersecond', 'tbit/s'], ['terabitspersecond', 'tbit/s'], ['tbps', 'tbit/s'],
+  ['b/s', 'b/s'], ['bytes/s', 'b/s'], ['bytepersecond', 'b/s'], ['bytespersecond', 'b/s'],
+  ['kb/s', 'kb/s'], ['kilobytepersecond', 'kb/s'], ['kilobytespersecond', 'kb/s'],
+  ['mb/s', 'mb/s'], ['megabytepersecond', 'mb/s'], ['megabytespersecond', 'mb/s'],
+  ['gb/s', 'gb/s'], ['gigabytepersecond', 'gb/s'], ['gigabytespersecond', 'gb/s'],
+  ['tb/s', 'tb/s'], ['terabytepersecond', 'tb/s'], ['terabytespersecond', 'tb/s'],
+  ['kib/s', 'kib/s'], ['kibibytepersecond', 'kib/s'], ['kibibytespersecond', 'kib/s'],
+  ['mib/s', 'mib/s'], ['mebibytepersecond', 'mib/s'], ['mebibytespersecond', 'mib/s'],
+  ['gib/s', 'gib/s'], ['gibibytepersecond', 'gib/s'], ['gibibytespersecond', 'gib/s'],
+  ['tib/s', 'tib/s'], ['tebibytepersecond', 'tib/s'], ['tebibytespersecond', 'tib/s'],
+  // acceleration
+  ['m/s2', 'm/s2'], ['mps2', 'm/s2'], ['meterpersecondsquared', 'm/s2'], ['meterspersecondsquared', 'm/s2'],
+  ['metrepersecondsquared', 'm/s2'], ['metrespersecondsquared', 'm/s2'],
+  ['g0', 'g0'], ['gn', 'g0'], ['gravity', 'g0'], ['standardgravity', 'g0'], ['gforce', 'g0'], ['g-force', 'g0'],
+  ['ft/s2', 'ft/s2'], ['fps2', 'ft/s2'], ['footpersecondsquared', 'ft/s2'], ['feetpersecondsquared', 'ft/s2'],
+  ['mph/s', 'mph/s'], ['mphpersecond', 'mph/s'], ['milesperhourpersecond', 'mph/s'],
+  // illumination
+  ['lx', 'lx'], ['lux', 'lx'], ['lumenpersquaremeter', 'lx'], ['lumenspersquaremeter', 'lx'],
+  ['klx', 'klx'], ['kilolux', 'klx'],
+  ['fc', 'fc'], ['footcandle', 'fc'], ['footcandles', 'fc'], ['lumenpersquarefoot', 'fc'], ['lumenspersquarefoot', 'fc'],
+  ['ph', 'ph'], ['phot', 'ph'], ['phots', 'ph'],
 ])
 
 /** Normalize raw user input into an alias-table key. */
