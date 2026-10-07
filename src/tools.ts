@@ -7,12 +7,21 @@
  */
 
 import { defineTool, type ToolDefinition } from '@deepseek-ai/dsh-tools'
-import { convert, listUnits, type ConversionResult, type CategoryListing } from './units.ts'
+import {
+  convert,
+  listUnits,
+  unitPrice,
+  MAX_PRICE_OFFERS,
+  type ConversionResult,
+  type CategoryListing,
+  type PriceComparison,
+} from './units.ts'
 import type { ResolvedConfig } from './index.ts'
 
 export interface ToolSet {
   convert_unit: ToolDefinition
   list_units: ToolDefinition
+  unit_price: ToolDefinition
 }
 
 function renderConvert(value: unknown): string {
@@ -31,6 +40,20 @@ function renderList(value: unknown): string {
   return lines.join('\n')
 }
 
+function renderPrice(value: unknown): string {
+  const result = value as PriceComparison
+  const lines: string[] = [`unit prices per ${result.target_symbol} (${result.category}):`]
+  for (const offer of result.offers) {
+    lines.push(`  #${offer.index + 1} ${offer.price} per ${offer.per_symbol}` +
+      `${offer.quantity === 1 ? '' : ` (${offer.quantity} ${offer.per_symbol})`}` +
+      `${offer.quantity === 1 ? '' : ` = ${offer.total_target} ${result.target_symbol}`}` +
+      ` → ${offer.price_per_target} per ${result.target_symbol}`)
+  }
+  lines.push(`cheapest: #${result.best_index + 1} at ${result.best_price_per_target} per ${result.target_symbol}` +
+    ` (spread ${result.spread_percent}%)`)
+  return lines.join('\n')
+}
+
 /** Build both tool definitions from the resolved config. */
 export function buildUnitsTools(config: ResolvedConfig): ToolSet {
   const convert_unit = defineTool({
@@ -40,7 +63,8 @@ export function buildUnitsTools(config: ResolvedConfig): ToolSet {
       'rate (Mbps vs MB/s, MiB/s), acceleration (m/s², g-force), illumination (lux, foot-candles), pressure, ' +
       'energy, angle, frequency, power (mechanical/metric/electric horsepower, BTU/h), force ' +
       '(newton, pound-force, kgf), torque (newton meter, pound-force foot), typography (px/pt/em/rem at 96 ' +
-      'dpi, 16 px base font), or fuel economy (L/100km ↔ mpg US/UK ↔ km/L). Handles affine temperatures ' +
+      'dpi, 16 px base font), volumetric flow rate (m³/s, L/min, CFM, US gpm), density (kg/m³, g/cm³, ' +
+      'lb/ft³, lb/gal), or fuel economy (L/100km ↔ mpg US/UK ↔ km/L). Handles affine temperatures ' +
       '(C/F/K) and reciprocal fuel economy correctly, keeping full precision internally and rounding only ' +
       'for display. Pure math, no network. Use list_units to discover accepted unit symbols and names.',
     parameters: {
@@ -74,7 +98,7 @@ export function buildUnitsTools(config: ResolvedConfig): ToolSet {
     name: 'list_units',
     description: 'List every supported unit category with its unit symbols and full names. Pass an optional ' +
       'category to see just one, e.g. "data" or "temperature". Use this to find the exact symbols for ' +
-      'convert_unit. Pure math, no network.',
+      'convert_unit and unit_price. Pure math, no network.',
     parameters: {
       category: { type: 'string', description: 'Optional category id or name to filter by, e.g. "data", "volume", "speed". Omit to list all.' },
     },
@@ -120,5 +144,70 @@ export function buildUnitsTools(config: ResolvedConfig): ToolSet {
     },
   })
 
-  return { convert_unit, list_units }
+  const unit_price = defineTool({
+    name: 'unit_price',
+    description: `Normalize and compare unit prices: pass 1–${MAX_PRICE_OFFERS} offers as { price, per, quantity? } ` +
+      '(price = what you pay, per = the unit it buys, quantity = how many of that unit, default 1) and get the price ' +
+      'of one `to` unit for each offer (default: the category base unit — meter, kilogram, liter, second, bit, …), plus ' +
+      'the cheapest offer and the spread in percent. Catches the classic "is $3.99/lb cheaper than $8.50/kg?" and ' +
+      '"500 g for $4.29 vs 1 lb for $3.59" traps without mental math. Only linear units are accepted: temperatures ' +
+      '(affine, arbitrary zero point) and fuel economy (reciprocal) are rejected with an explanation instead of a ' +
+      'wrong number. Pure math, no network.',
+    parameters: {
+      offers: {
+        type: 'array',
+        required: true,
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            price: { type: 'number', required: true, description: 'Total price paid for this offer, e.g. 3.99.' },
+            per: { type: 'string', required: true, description: 'Unit the price buys, e.g. "lb", "kg", "L", "gal", "kwh".' },
+            quantity: { type: 'number', description: 'How many `per` units the price buys; default 1. Use 500 with per "g" for a 500 g pack.' },
+          },
+        },
+        description: `Between 1 and ${MAX_PRICE_OFFERS} offers, e.g. [{ price: 3.99, per: "lb" }, { price: 8.5, per: "kg" }].`,
+      },
+      to: { type: 'string', description: 'Unit to express every price in, e.g. "kg", "L". Must share a category with every offer unit. Omit for the category base unit.' },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          category: { type: 'string', required: true },
+          target_unit: { type: 'string', required: true },
+          target_symbol: { type: 'string', required: true },
+          offers: {
+            type: 'array',
+            required: true,
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                index: { type: 'number', required: true },
+                price: { type: 'number', required: true },
+                quantity: { type: 'number', required: true },
+                per_unit: { type: 'string', required: true },
+                per_symbol: { type: 'string', required: true },
+                total_target: { type: 'number', required: true },
+                price_per_target: { type: 'number', required: true },
+                formula: { type: 'string', required: true },
+              },
+            },
+          },
+          best_index: { type: 'number', required: true },
+          best_price_per_target: { type: 'number', required: true },
+          spread_percent: { type: 'number', required: true },
+        },
+      },
+      render: (_args: { offers: Array<{ price: number; per: string; quantity?: number }>; to?: string }, value: unknown) =>
+        [{ type: 'text', text: renderPrice(value) }],
+    },
+    async execute(args: { offers: Array<{ price: number; per: string; quantity?: number }>; to?: string }) {
+      return unitPrice(args.offers, args.to, config.maxDecimals)
+    },
+  })
+
+  return { convert_unit, list_units, unit_price }
 }

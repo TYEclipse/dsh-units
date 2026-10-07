@@ -10,6 +10,7 @@ import type { ResolvedConfig } from './index.ts';
 export interface ToolSet {
     convert_unit: ToolDefinition;
     list_units: ToolDefinition;
+    unit_price: ToolDefinition;
 }
 /** Build both tool definitions from the resolved config. */
 export declare function buildUnitsTools(config: ResolvedConfig): ToolSet;

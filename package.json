@@ -1,7 +1,7 @@
 {
   "name": "dsh-units",
-  "version": "0.4.0",
-  "description": "Unit conversion toolbox for DeepSeek Harness (dsh): length, mass, temperature, area, volume (incl. cooking), speed, time, data sizes (decimal MB vs binary MiB), data transfer rates (Mbps vs MB/s), acceleration (m/s², g-force), illumination (lux, foot-candle), pressure, energy, angle, frequency, power (mechanical/metric/electric horsepower), force, torque, typography (px/pt/em/rem), fuel economy (mpg ↔ L/100km) — zero runtime dependencies",
+  "version": "0.5.0",
+  "description": "Unit conversion toolbox for DeepSeek Harness (dsh): length, mass, temperature, area, volume (incl. cooking), speed, time, data sizes (decimal MB vs binary MiB), data transfer rates (Mbps vs MB/s), acceleration (m/s², g-force), illumination (lux, foot-candle), pressure, energy, angle, frequency, power (mechanical/metric/electric horsepower), force, torque, typography (px/pt/em/rem), volumetric flow rate (m³/s, L/min, CFM, gpm), density (kg/m³, g/cm³, lb/ft³, lb/gal), fuel economy (mpg ↔ L/100km) — plus a unit-price tool that normalizes and ranks price-per-unit offers; zero runtime dependencies",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -36,7 +36,11 @@
     "power",
     "horsepower",
     "force",
-    "torque"
+    "torque",
+    "volumetric-flow-rate",
+    "density",
+    "unit-price",
+    "price-comparison"
   ],
   "license": "MIT",
   "repository": {

@@ -1,10 +1,16 @@
 /**
  * Unit tests for the conversion engine: linear factors, affine temperatures,
- * aliases, data sizes (decimal vs binary), error paths, and unit listing.
+ * aliases, data sizes (decimal vs binary), flow rate, density, unit prices,
+ * error paths, and unit listing.
+ *
+ * ORACLE: test/oracle/anchors.py
+ * Every numeric expectation below is printed by that script (run it to review
+ * the expected values; `--check` validates the table against definitional
+ * identities such as 1 in = 25.4 mm, 1 gal = 3.785411784 L, g₀ = 9.80665 m/s²).
  */
 
 import { describe, expect, it } from 'vitest'
-import { convert, listUnits, resolveUnit, CATEGORIES } from '../src/units.ts'
+import { convert, listUnits, resolveUnit, unitPrice, CATEGORIES, MAX_PRICE_OFFERS } from '../src/units.ts'
 
 describe('linear conversions', () => {
   it('converts length with exact factors', () => {
@@ -266,6 +272,144 @@ describe('error paths', () => {
   })
 })
 
+describe('volumetric flow rate', () => {
+  it('converts SI, HVAC and plumbing units', () => {
+    expect(convert(1, 'm3/s', 'l/s').result).toBe(1_000)
+    expect(convert(1, 'm3/h', 'l/s').result).toBe(0.277778)
+    expect(convert(1, 'l/s', 'm3/h').result).toBe(3.6)
+    expect(convert(6, 'l/min', 'l/s').result).toBe(0.1)
+    expect(convert(1, 'cfm', 'l/s').result).toBe(0.471947)
+    expect(convert(1, 'gpm', 'l/s').result).toBe(0.0630902)
+    expect(convert(100, 'cfm', 'm3/h').result).toBe(169.90108)
+    expect(convert(60, 'l/min', 'l/h').result).toBe(3_600)
+    expect(convert(1, 'l/min', 'gpm').result).toBe(0.264172)
+    expect(convert(2.5, 'gpm', 'l/min').result).toBe(9.463529)
+    expect(convert(1, 'm3/s', 'cfm').result).toBe(2118.880003)
+  })
+
+  it('keeps flows a separate category from volumes and resolves names', () => {
+    expect(() => convert(1, 'l/min', 'l')).toThrow(/must share a category/)
+    expect(resolveUnit('cubicfeetperminute').unit.symbol).toBe('cfm')
+    expect(resolveUnit('lpm').unit.symbol).toBe('l/min')
+    expect(resolveUnit('m3/h').unit.symbol).toBe('m3/h')
+    expect(listUnits('flow')[0]?.units).toHaveLength(7)
+  })
+})
+
+describe('density', () => {
+  it('converts SI and imperial densities', () => {
+    expect(convert(1, 'g/cm3', 'kg/m3').result).toBe(1_000)
+    expect(convert(1, 'kg/m3', 'g/l').result).toBe(1)
+    expect(convert(1, 'g/ml', 'kg/l').result).toBe(1)
+    expect(convert(1, 'lb/ft3', 'kg/m3').result).toBe(16.018463)
+    expect(convert(1, 'lb/gal', 'kg/m3').result).toBe(119.826427)
+    expect(convert(1000, 'kg/m3', 't/m3').result).toBe(1)
+    expect(convert(1, 'kg/l', 'lb/gal').result).toBe(8.345404)
+    expect(convert(8.345, 'lb/gal', 'g/ml').result).toBe(0.999952)
+    expect(convert(1, 'g/cm3', 'lb/ft3').result).toBe(62.427961)
+  })
+
+  it('keeps lb/gal in kg per cubic meter (the /1000 slip caught by the oracle)', () => {
+    // 1 lb/US gal = 0.45359237 kg ÷ 0.003785411784 m³ ≈ 119.83 kg/m³, not 0.11983
+    expect(convert(1, 'lb/gal', 'kg/m3').result).toBeGreaterThan(100)
+    expect(resolveUnit('poundpercubicfoot').unit.symbol).toBe('lb/ft3')
+    expect(resolveUnit('t/m3').category.id).toBe('density')
+  })
+})
+
+describe('unit_price', () => {
+  it('normalizes two offers into the same unit and ranks them', () => {
+    const out = unitPrice([{ price: 3.99, per: 'lb' }, { price: 8.5, per: 'kg' }], 'kg')
+    expect(out.category).toBe('mass')
+    expect(out.target_unit).toBe('kilogram')
+    expect(out.target_symbol).toBe('kg')
+    expect(out.offers[0]?.per_symbol).toBe('lb')
+    expect(out.offers[0]?.total_target).toBe(0.453592)
+    expect(out.offers[0]?.price_per_target).toBe(8.796444)
+    expect(out.offers[0]?.formula).toBe('3.99 ÷ (1 × 0.453592) × 1')
+    expect(out.offers[1]?.price_per_target).toBe(8.5)
+    expect(out.offers[1]?.formula).toBe('8.5 ÷ (1 × 1) × 1')
+    expect(out.best_index).toBe(1)
+    expect(out.best_price_per_target).toBe(8.5)
+    expect(out.spread_percent).toBe(3.370046)
+  })
+
+  it('defaults to the category base unit', () => {
+    const out = unitPrice([{ price: 3.99, per: 'lb' }, { price: 8.5, per: 'kg' }])
+    expect(out.target_symbol).toBe('kg')
+    expect(out.offers[0]?.price_per_target).toBe(8.796444)
+    expect(out.spread_percent).toBe(3.370046)
+  })
+
+  it('accounts for package quantities', () => {
+    const out = unitPrice([{ price: 4.29, per: 'g', quantity: 500 }, { price: 3.59, per: 'lb' }], 'kg')
+    expect(out.offers[0]?.quantity).toBe(500)
+    expect(out.offers[0]?.total_target).toBe(0.5)
+    expect(out.offers[0]?.price_per_target).toBe(8.58)
+    expect(out.offers[1]?.price_per_target).toBe(7.914595)
+    expect(out.best_index).toBe(1)
+    expect(out.best_price_per_target).toBe(7.914595)
+    expect(out.spread_percent).toBe(7.755301)
+  })
+
+  it('compares fuel-style volume prices and reports the spread', () => {
+    const out = unitPrice([{ price: 2.5, per: 'l' }, { price: 9.9, per: 'gal' }], 'l')
+    expect(out.offers[1]?.total_target).toBe(3.785412)
+    expect(out.offers[1]?.price_per_target).toBe(2.615303)
+    expect(out.best_index).toBe(0)
+    expect(out.spread_percent).toBe(4.408793)
+  })
+
+  it('handles energy, area, data size and free offers', () => {
+    const energy = unitPrice([{ price: 1.2, per: 'kwh' }, { price: 0.4, per: 'kj' }], 'kwh')
+    expect(energy.offers[1]?.price_per_target).toBe(1_440)
+    expect(energy.offers[1]?.formula).toBe('0.4 ÷ (1 × 1000) × 3600000')
+    expect(energy.spread_percent).toBe(99.916667)
+
+    const area = unitPrice([{ price: 12, per: 'm2' }, { price: 0.9, per: 'ft2' }])
+    expect(area.target_symbol).toBe('m2')
+    expect(area.offers[1]?.price_per_target).toBe(9.687519)
+    expect(area.spread_percent).toBe(19.270672)
+
+    const data = unitPrice([{ price: 9.99, per: 'gb' }, { price: 0.05, per: 'mb' }], 'gb')
+    expect(data.offers[1]?.total_target).toBe(0.001)
+    expect(data.offers[1]?.price_per_target).toBe(50)
+    expect(data.spread_percent).toBe(80.02)
+
+    const free = unitPrice([{ price: 0, per: 'kg' }, { price: 1, per: 'kg' }])
+    expect(free.best_index).toBe(0)
+    expect(free.best_price_per_target).toBe(0)
+    expect(free.spread_percent).toBe(100)
+  })
+
+  it('sizes a recipe-style offer by its quantity', () => {
+    const out = unitPrice([{ price: 3.49, per: 'cup', quantity: 2 }, { price: 2.79, per: 'l' }], 'l')
+    expect(out.offers[0]?.total_target).toBe(0.48)
+    expect(out.offers[0]?.price_per_target).toBe(7.270833)
+    expect(out.best_index).toBe(1)
+    expect(out.spread_percent).toBe(61.627507)
+  })
+
+  it('rejects affine temperatures and reciprocal fuel economy', () => {
+    expect(() => unitPrice([{ price: 1, per: 'c' }])).toThrow(/affine/)
+    expect(() => unitPrice([{ price: 1, per: 'fahrenheit' }])).toThrow(/use a linear unit/)
+    expect(() => unitPrice([{ price: 1, per: 'mpg' }])).toThrow(/reciprocal/)
+  })
+
+  it('rejects cross-category targets and malformed offers', () => {
+    expect(() => unitPrice([{ price: 1, per: 'kg' }], 'l')).toThrow(/must share a category/)
+    expect(() => unitPrice([{ price: 1, per: 'kg' }, { price: 1, per: 'l' }], 'kg')).toThrow(/must share a category/)
+    expect(() => unitPrice([])).toThrow(/non-empty array/)
+    expect(() => unitPrice([{ price: -1, per: 'kg' }])).toThrow(/price must be a finite number/)
+    expect(() => unitPrice([{ price: 1, per: 'kg', quantity: 0 }])).toThrow(/quantity must be a finite number/)
+    expect(() => unitPrice([{ price: 1, per: 7 as unknown as string }])).toThrow(/per must be a unit string/)
+    expect(() => unitPrice([null as unknown as { price: number; per: string }])).toThrow(/must be an object/)
+    expect(() => unitPrice([{ price: 1, per: 'smoots' }])).toThrow(/unknown unit/)
+    const many = Array.from({ length: MAX_PRICE_OFFERS + 1 }, () => ({ price: 1, per: 'kg' }))
+    expect(() => unitPrice(many)).toThrow(/at most 6 offers/)
+  })
+})
+
 describe('resolveUnit', () => {
   it('maps aliases to canonical symbols', () => {
     expect(resolveUnit('MiB').unit.symbol).toBe('mib')
@@ -274,9 +418,9 @@ describe('resolveUnit', () => {
 })
 
 describe('listUnits', () => {
-  it('lists all 20 categories without a filter', () => {
+  it('lists all 22 categories without a filter', () => {
     const all = listUnits()
-    expect(all).toHaveLength(20)
+    expect(all).toHaveLength(22)
     expect(all.map((cat) => cat.id)).toEqual(CATEGORIES.map((cat) => cat.id))
   })
 

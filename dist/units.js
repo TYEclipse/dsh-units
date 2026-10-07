@@ -9,7 +9,10 @@
  * @module dsh-units/units
  */
 const L = (symbol, name, factor) => ({ symbol, name, factor });
-/** The static unit table: 17 categories, no external data. */
+/**
+ * The static unit table — the single source of every conversion factor.
+ * (Count deliberately not written in prose: it drifted twice already.)
+ */
 export const CATEGORIES = [
     {
         id: 'length', name: 'length', base: 'meter', kind: 'linear',
@@ -213,6 +216,32 @@ export const CATEGORIES = [
             L('klx', 'kilolux', 1e3), L('lx', 'lux (lumen per square meter)', 1),
             L('fc', 'foot-candle (lumen per square foot)', 1 / 0.09290304),
             L('ph', 'phot', 1e4),
+        ],
+    },
+    {
+        // Volumetric flow rate: the SI base is m³/s; cfm (cubic feet per minute)
+        // and gpm (US gallons per minute) are the HVAC / plumbing units. Note that
+        // "l/min" is a flow, not a volume — volumes stay in the volume category.
+        id: 'flow', name: 'volumetric flow rate', base: 'cubic meter per second', kind: 'linear',
+        units: [
+            L('m3/s', 'cubic meter per second', 1), L('m3/h', 'cubic meter per hour', 1 / 3600),
+            L('l/s', 'liter per second', 0.001), L('l/min', 'liter per minute', 0.001 / 60),
+            L('l/h', 'liter per hour', 0.001 / 3600),
+            L('cfm', 'cubic foot per minute', 0.3048 ** 3 / 60),
+            L('gpm', 'US gallon per minute', 3.785411784 / 60_000),
+        ],
+    },
+    {
+        // Density: the SI base is kg/m³. 'g/l' is numerically identical to kg/m³
+        // (1 g/L = 1 kg/m³); g/cm³ = g/mL = kg/L = t/m³ = 1000 kg/m³. lb/ft³ and
+        // lb/US gallon are the imperial units.
+        id: 'density', name: 'density', base: 'kilogram per cubic meter', kind: 'linear',
+        units: [
+            L('kg/m3', 'kilogram per cubic meter', 1), L('g/l', 'gram per liter', 1),
+            L('g/cm3', 'gram per cubic centimeter', 1_000), L('g/ml', 'gram per milliliter', 1_000),
+            L('kg/l', 'kilogram per liter', 1_000), L('t/m3', 'tonne per cubic meter', 1_000),
+            L('lb/ft3', 'pound per cubic foot', 0.45359237 / 0.3048 ** 3),
+            L('lb/gal', 'pound per US gallon', 0.45359237 * 1_000 / 3.785411784),
         ],
     },
 ];
@@ -437,6 +466,23 @@ const ALIASES = new Map([
     ['klx', 'klx'], ['kilolux', 'klx'],
     ['fc', 'fc'], ['footcandle', 'fc'], ['footcandles', 'fc'], ['lumenpersquarefoot', 'fc'], ['lumenspersquarefoot', 'fc'],
     ['ph', 'ph'], ['phot', 'ph'], ['phots', 'ph'],
+    // flow rate
+    ['m3/s', 'm3/s'], ['cubicmeterpersecond', 'm3/s'], ['cumecs', 'm3/s'],
+    ['m3/h', 'm3/h'], ['cubicmeterperhour', 'm3/h'], ['cubicmetersperhour', 'm3/h'],
+    ['l/s', 'l/s'], ['literpersecond', 'l/s'], ['literspersecond', 'l/s'], ['lps', 'l/s'],
+    ['l/min', 'l/min'], ['literperminute', 'l/min'], ['litersperminute', 'l/min'], ['lpm', 'l/min'],
+    ['l/h', 'l/h'], ['literperhour', 'l/h'], ['litersperhour', 'l/h'],
+    ['cfm', 'cfm'], ['cubicfootperminute', 'cfm'], ['cubicfeetperminute', 'cfm'],
+    ['gpm', 'gpm'], ['gallonsperminute', 'gpm'], ['usgallonsperminute', 'gpm'],
+    // density
+    ['kg/m3', 'kg/m3'], ['kilogrampercubicmeter', 'kg/m3'], ['kgpercubicmeter', 'kg/m3'],
+    ['g/l', 'g/l'], ['gramperliter', 'g/l'], ['gramsperliter', 'g/l'], ['gramperlitre', 'g/l'],
+    ['g/cm3', 'g/cm3'], ['grampercubiccentimeter', 'g/cm3'], ['gramspercubiccentimeter', 'g/cm3'],
+    ['g/ml', 'g/ml'], ['grampermilliliter', 'g/ml'], ['gramspermilliliter', 'g/ml'],
+    ['kg/l', 'kg/l'], ['kilogramperliter', 'kg/l'], ['kilogramsperliter', 'kg/l'],
+    ['t/m3', 't/m3'], ['tonnepercubicmeter', 't/m3'], ['tonnespercubicmeter', 't/m3'],
+    ['lb/ft3', 'lb/ft3'], ['poundpercubicfoot', 'lb/ft3'], ['poundspercubicfoot', 'lb/ft3'],
+    ['lb/gal', 'lb/gal'], ['poundpergallon', 'lb/gal'], ['poundspergallon', 'lb/gal'],
 ]);
 /** Normalize raw user input into an alias-table key. */
 function normalize(raw) {
@@ -546,6 +592,105 @@ export function convert(value, fromRaw, toRaw, maxDecimals = 6) {
         result: roundValue(result, maxDecimals),
         formula,
         category: from.category.name,
+    };
+}
+/** Upper bound on offers per unit_price call. */
+export const MAX_PRICE_OFFERS = 6;
+/** The factor-1 unit that a linear category is expressed in. */
+function baseUnitOf(category) {
+    const unit = category.units.find((entry) => entry.factor === 1);
+    if (unit === undefined) {
+        throw new Error(`internal: linear category "${category.id}" has no factor-1 base unit`);
+    }
+    return unit;
+}
+/**
+ * Normalize 1–6 "price for a quantity of one unit" offers into a price per
+ * target unit (default: the category's base unit) and rank them. Only linear
+ * categories are accepted: temperatures are affine (an arbitrary zero point
+ * makes "price per degree" meaningless) and fuel economy is reciprocal, so
+ * both are rejected with an explanatory error instead of a wrong number.
+ */
+export function unitPrice(offers, toRaw, maxDecimals = 6) {
+    if (!Array.isArray(offers) || offers.length === 0) {
+        throw new Error('offers must be a non-empty array of { price, per, quantity? } objects');
+    }
+    if (offers.length > MAX_PRICE_OFFERS) {
+        throw new Error(`unit_price accepts at most ${MAX_PRICE_OFFERS} offers (got ${offers.length})`);
+    }
+    const resolved = offers.map((offer, index) => {
+        if (offer === null || typeof offer !== 'object') {
+            throw new Error(`offer #${index + 1} must be an object with "price" and "per"`);
+        }
+        if (typeof offer.price !== 'number' || !Number.isFinite(offer.price) || offer.price < 0) {
+            throw new Error(`offer #${index + 1}: price must be a finite number ≥ 0 (got ${String(offer.price)})`);
+        }
+        if (typeof offer.per !== 'string') {
+            throw new Error(`offer #${index + 1}: per must be a unit string, e.g. "kg", "lb", "L"`);
+        }
+        const quantity = offer.quantity ?? 1;
+        if (typeof quantity !== 'number' || !Number.isFinite(quantity) || quantity <= 0) {
+            throw new Error(`offer #${index + 1}: quantity must be a finite number > 0 (got ${String(offer.quantity)})`);
+        }
+        const { category, unit } = resolveUnit(offer.per);
+        if (category.kind !== 'linear') {
+            const why = category.kind === 'temperature'
+                ? 'temperatures are affine — their zero point is arbitrary, so "price per degree" is not a ratio'
+                : 'fuel economy is reciprocal (mpg vs L/100km), so price per unit is not a linear factor';
+            throw new Error(`cannot compare prices in "${category.name}" — ${why}: use a linear unit like kg, lb, L or gal`);
+        }
+        return { index, price: offer.price, quantity, category, unit };
+    });
+    const first = resolved[0];
+    for (const entry of resolved) {
+        if (entry.category.id !== first.category.id) {
+            throw new Error(`offer #${entry.index + 1} is in ${entry.category.name} (${entry.unit.name}) while offer #1 is ` +
+                `in ${first.category.name} (${first.unit.name}) — every offer must share a category`);
+        }
+    }
+    const targetUnit = toRaw !== undefined && toRaw.trim() !== '' ? resolveUnit(toRaw) : undefined;
+    if (targetUnit !== undefined && targetUnit.category.id !== first.category.id) {
+        throw new Error(`cannot express a price in ${first.category.name} as ${targetUnit.unit.name} ` +
+            `(${targetUnit.category.name}) — the offer unit and the target unit must share a category`);
+    }
+    const target = targetUnit === undefined ? baseUnitOf(first.category) : targetUnit.unit;
+    const targetFactor = target.factor;
+    if (targetFactor === undefined) {
+        throw new Error(`internal: linear category "${first.category.id}" has a unit without a factor`);
+    }
+    const quotes = [];
+    let lowest = Infinity;
+    let highest = -Infinity;
+    let bestIndex = 0;
+    for (const entry of resolved) {
+        const factorPer = entry.unit.factor;
+        const totalTarget = (entry.quantity * factorPer) / targetFactor;
+        const perTarget = entry.price / totalTarget;
+        if (perTarget < lowest) {
+            lowest = perTarget;
+            bestIndex = entry.index;
+        }
+        if (perTarget > highest)
+            highest = perTarget;
+        quotes.push({
+            index: entry.index,
+            price: entry.price,
+            quantity: entry.quantity,
+            per_unit: entry.unit.name,
+            per_symbol: entry.unit.symbol,
+            total_target: roundValue(totalTarget, maxDecimals),
+            price_per_target: roundValue(perTarget, maxDecimals),
+            formula: `${entry.price} ÷ (${entry.quantity} × ${roundForFormula(factorPer)}) × ${roundForFormula(targetFactor)}`,
+        });
+    }
+    return {
+        category: first.category.name,
+        target_unit: target.name,
+        target_symbol: target.symbol,
+        offers: quotes,
+        best_index: bestIndex,
+        best_price_per_target: roundValue(lowest, maxDecimals),
+        spread_percent: highest > 0 ? roundValue(((highest - lowest) / highest) * 100, maxDecimals) : 0,
     };
 }
 /** List all categories (optionally one) with their units and symbols. */

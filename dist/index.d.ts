@@ -1,7 +1,7 @@
 /**
  * dsh-units — unit conversion toolbox for DeepSeek Harness.
  *
- * Two tools, zero runtime dependencies (pure arithmetic):
+ * Three tools, zero runtime dependencies (pure arithmetic):
  *   convert_unit — convert a value between two units of one category:
  *                  length, mass, temperature (affine C/F/K), area, volume
  *                  (incl. US cooking units), speed, time duration, data
@@ -10,8 +10,11 @@
  *                  illumination (lux, foot-candles), pressure, energy,
  *                  angle, frequency, power (mechanical/metric/electric
  *                  horsepower), force, torque, typography (px/pt/em/rem),
- *                  fuel economy (L/100km ↔ mpg ↔ km/L, reciprocal).
+ *                  volumetric flow rate (m³/s, L/min, CFM, gpm), density
+ *                  (kg/m³, g/cm³, lb/ft³), fuel economy (L/100km ↔ mpg).
  *   list_units   — discover every supported category, unit symbol and name.
+ *   unit_price   — normalize 1–6 "price per unit" offers into one target
+ *                  unit, rank them, and report the cheapest and the spread.
  *
  * Safety model: everything is pure synchronous math over a static unit
  * table — no network, no filesystem, no code execution. Invalid units,

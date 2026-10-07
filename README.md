@@ -1,10 +1,10 @@
 # dsh-units 📐
 
-Unit conversion toolbox for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (dsh) — **20 categories, zero runtime dependencies**, pure arithmetic over a static unit table (no network, no filesystem, no code execution).
+Unit conversion toolbox for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (dsh) — **22 categories, 3 tools, zero runtime dependencies**, pure arithmetic over a static unit table (no network, no filesystem, no code execution).
 
-When your agent needs to answer *"how many miles is 100 km?"*, *"is 1 MB bigger than 1 MiB?"*, *"is 100 Mbps the same as 100 MB/s?"*, *"what's 350°F in Celsius?"*, *"how many tablespoons in 2 cups?"*, *"16px is how many pt?"*, *"20 mpg in L/100km?"*, *"150 kW is how much mechanical horsepower?"* or *"how many g is 9.8 m/s²?"* — instead of doing error-prone mental math, it can call these tools and read exact results.
+When your agent needs to answer *"how many miles is 100 km?"*, *"is 1 MB bigger than 1 MiB?"*, *"is 100 Mbps the same as 100 MB/s?"*, *"what's 350°F in Celsius?"*, *"how many tablespoons in 2 cups?"*, *"16px is how many pt?"*, *"20 mpg in L/100km?"*, *"150 kW is how much mechanical horsepower?"*, *"how many g is 9.8 m/s²?"*, *"100 CFM in m³/h?"*, *"is $3.99/lb cheaper than $8.50/kg?"* or *"500 g for $4.29 vs 1 lb for $3.59?"* — instead of doing error-prone mental math, it can call these tools and read exact results.
 
-> 中文简介：dsh-units 是 DeepSeek Harness 的单位换算工具箱插件，覆盖长度、质量、温度、面积、体积（含美制烹饪单位）、速度、时长、数据大小（十进制 MB 与二进制 MiB 严格区分）、数据传输速率（Mbps 与 MB/s 严格区分）、加速度（g-force）、照度（lux / 英尺烛光）、压强、能量、角度、频率、功率（机械/公制/电动马力严格区分）、力、扭矩、排版印刷（px/pt/em/rem）、油耗（L/100km ↔ mpg ↔ km/L）共 20 个类别，零运行时依赖、纯算术实现，无网络无副作用。让 Agent 不再心算——特别是"MB/MiB 混淆""100 Mbps 不等于 100 MB/s""华氏摄氏互转""加仑换升""mpg 与 L/100km 互算""三种马力混淆"这类高频出错点，直接调用工具拿精确结果。
+> 中文简介：dsh-units 是 DeepSeek Harness 的单位换算工具箱插件，覆盖长度、质量、温度、面积、体积（含美制烹饪单位）、速度、时长、数据大小（十进制 MB 与二进制 MiB 严格区分）、数据传输速率（Mbps 与 MB/s 严格区分）、加速度（g-force）、照度（lux / 英尺烛光）、压强、能量、角度、频率、功率（机械/公制/电动马力严格区分）、力、扭矩、排版印刷（px/pt/em/rem）、体积流量（m³/s、L/min、CFM、US gpm）、密度（kg/m³、g/cm³、lb/ft³、lb/gal）、油耗（L/100km ↔ mpg ↔ km/L）共 22 个类别，并提供单价归一与比价工具，零运行时依赖、纯算术实现，无网络无副作用。让 Agent 不再心算——特别是"MB/MiB 混淆""100 Mbps 不等于 100 MB/s""华氏摄氏互转""加仑换升""mpg 与 L/100km 互算""三种马力混淆""$3.99/lb 与 $8.50/kg 哪个便宜"这类高频出错点，直接调用工具拿精确结果。
 
 ## Why it exists
 
@@ -17,7 +17,8 @@ When your agent needs to answer *"how many miles is 100 km?"*, *"is 1 MB bigger 
 | Tool | What it does |
 |------|--------------|
 | `convert_unit` | Convert `value` from one unit to another within a category. Accepts symbols or full names (case-insensitive, °C, m², "miles", "MiB" all work). Rejects unknown units and cross-category pairs with clear errors. |
-| `list_units` | List all 20 categories with every unit symbol and full name (optionally one category, e.g. `"data"` or `"temperature"`) — for discovering the exact symbols to pass to `convert_unit`. |
+| `list_units` | List all 22 categories with every unit symbol and full name (optionally one category, e.g. `"data"` or `"temperature"`) — for discovering the exact symbols to pass to `convert_unit` and `unit_price`. |
+| `unit_price` | Normalize and compare unit prices: pass 1–6 offers as `{ price, per, quantity? }` (`quantity` defaults to 1, so `{ price: 4.29, per: "g", quantity: 500 }` is a 500 g pack) and get the price of one target unit for each offer (default: the category base unit), the cheapest offer and the spread in percent. Rejects temperatures (affine) and fuel economy (reciprocal) instead of returning a meaningless number. |
 
 ## Supported categories
 
@@ -43,12 +44,16 @@ When your agent needs to answer *"how many miles is 100 km?"*, *"is 1 MB bigger 
 | power | mw, kw, w, hp (mechanical = 550 ft·lbf/s), hp(m) (metric PS), hp(e) (electric 746 W), btu/h (IT), ftlb/s — **three different horsepower definitions** |
 | force | kn, n, dyn, lbf, kgf (kp), gf — lbf/kgf are weight-based at standard gravity 9.80665 m/s² |
 | torque | n.m, kgf.m, lbfft (pound-force foot), lbfin (pound-force inch) — force × length |
+| volumetric flow rate | m3/s, m3/h, l/s, l/min, l/h, cfm (cubic foot per minute), gpm (US gallon per minute) — **flows, not volumes** |
+| density | kg/m3, g/l (identical to kg/m³), g/cm3 (= g/mL = kg/L = t/m³), g/ml, kg/l, t/m3, lb/ft3, lb/gal — **lb/gal is 119.8264 kg/m³** |
 
 > **v0.2.0 note:** `pt` now means the typography *point* (previously the US *pint*). Use `pint` for pints — `convert_unit { value: 1, from: "pint", to: "l" }` still works. `em`/`rem` assume the common 16 px browser default base font size; `px` assumes 96 dpi (documented assumptions, not physical absolutes).
 >
 > **v0.3.0 note (symbol disambiguation):** typed input `kn` resolves to *knot* (speed) — reach kilonewton by its full name (`convert_unit { value: 1, from: "kilonewton", to: "n" }`). Likewise `nm` is the *nanometer* (length); the torque newton meter uses the symbol `n.m` (also `n·m` or full names).
 >
 > **v0.4.0 note (category split & disambiguation):** the old `data size / transfer` category is now **`data size`** (sizes only); rates live in **`data transfer rate`** — `mb/s` means megabyte per second (following `mb` = megabyte in the data table), while `mbps` / `mbit/s` mean megabit per second, so `100 Mbps → 12.5 MB/s` exactly. In acceleration, typed `g` stays the *gram* (mass) — gravity is `g0` / `gravity` / `g-force`; `gal` stays the US *gallon* (no galileo unit); `ph` is the *phot*, not pH.
+>
+> **v0.5.0 note (flow rate, density, unit prices):** two new categories — **`volumetric flow rate`** (`m3/s`, `m3/h`, `l/s`, `l/min`, `l/h`, `cfm`, `gpm`; a flow is *not* a volume, so `l/min` will not convert to `l`) and **`density`** (`kg/m3`, `g/l`, `g/cm3`, `g/ml`, `kg/l`, `t/m3`, `lb/ft3`, `lb/gal`). One new tool — **`unit_price`** — normalizes 1–6 offers onto one target unit and ranks them; it deliberately rejects temperature (affine zero point) and fuel economy (reciprocal), and every offer must share a category with the others and with `to`.
 
 ## Install
 
@@ -98,11 +103,35 @@ convert_unit { value: 9.8, from: "m/s2", to: "g0" }
 convert_unit { value: 1, from: "fc", to: "lx" }
 → 1 fc = 10.76391 lx (illumination, × 10.763910416709722)
 
+convert_unit { value: 1, from: "gpm", to: "l/s" }
+→ 1 gpm = 0.0630902 l/s (volumetric flow rate, × 0.0630901964)
+
+convert_unit { value: 100, from: "cfm", to: "m3/h" }
+→ 100 cfm = 169.90108 m3/h (volumetric flow rate, × 1.6990107955200004)
+
+convert_unit { value: 1, from: "lb/ft3", to: "kg/m3" }
+→ 1 lb/ft3 = 16.018463 kg/m3 (density, × 16.018463373960138)
+
+unit_price { offers: [{ price: 3.99, per: "lb" }, { price: 8.5, per: "kg" }], to: "kg" }
+→ unit prices per kg (mass):
+    #1 3.99 per lb → 8.796444 per kg
+    #2 8.5 per kg → 8.5 per kg
+  cheapest: #2 at 8.5 per kg (spread 3.370046%)
+
+unit_price { offers: [{ price: 4.29, per: "g", quantity: 500 }, { price: 3.59, per: "lb" }], to: "kg" }
+→ unit prices per kg (mass):
+    #1 4.29 per g (500 g) = 0.5 kg → 8.58 per kg
+    #2 3.59 per lb → 7.914595 per kg
+  cheapest: #2 at 7.914595 per kg (spread 7.755301%)
+
 list_units { category: "volume" }
 → volume (volume (incl. cooking), base: liter): m3 = cubic meter | l = liter | ...
+
+list_units { category: "flow" }
+→ flow (volumetric flow rate, base: cubic meter per second): m3/s = cubic meter per second | ... | gpm = US gallon per minute
 ```
 
-> All outputs above are captured from the built `dist/` (v0.4.0).
+> All outputs above are captured from the built `dist/` (v0.5.0).
 
 ## Configuration
 

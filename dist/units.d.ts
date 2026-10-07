@@ -27,7 +27,10 @@ export interface Category {
     kind: 'linear' | 'temperature' | 'fuel';
     units: UnitDef[];
 }
-/** The static unit table: 17 categories, no external data. */
+/**
+ * The static unit table — the single source of every conversion factor.
+ * (Count deliberately not written in prose: it drifted twice already.)
+ */
 export declare const CATEGORIES: readonly Category[];
 /** Find the category and unit for a user-supplied unit string. */
 export declare function resolveUnit(raw: string): {
@@ -50,6 +53,47 @@ export interface ConversionResult {
  * Throws on unknown units, cross-category pairs, or non-finite values.
  */
 export declare function convert(value: number, fromRaw: string, toRaw: string, maxDecimals?: number): ConversionResult;
+/** One offer for unit-price math: `price` buys `quantity` (default 1) of `per`. */
+export interface PriceOffer {
+    price: number;
+    per: string;
+    quantity?: number;
+}
+/** One normalized offer inside a unit-price comparison. */
+export interface PriceQuote {
+    index: number;
+    price: number;
+    quantity: number;
+    per_unit: string;
+    per_symbol: string;
+    /** How many target units this offer covers. */
+    total_target: number;
+    /** Price of one target unit (rounded for display). */
+    price_per_target: number;
+    formula: string;
+}
+/** Result of a unit-price normalization (one offer) or comparison (several). */
+export interface PriceComparison {
+    category: string;
+    target_unit: string;
+    target_symbol: string;
+    offers: PriceQuote[];
+    /** 0-based index of the cheapest offer; ties keep the earliest offer. */
+    best_index: number;
+    best_price_per_target: number;
+    /** How much cheaper the best offer is than the dearest, in percent (0 when equal). */
+    spread_percent: number;
+}
+/** Upper bound on offers per unit_price call. */
+export declare const MAX_PRICE_OFFERS = 6;
+/**
+ * Normalize 1–6 "price for a quantity of one unit" offers into a price per
+ * target unit (default: the category's base unit) and rank them. Only linear
+ * categories are accepted: temperatures are affine (an arbitrary zero point
+ * makes "price per degree" meaningless) and fuel economy is reciprocal, so
+ * both are rejected with an explanatory error instead of a wrong number.
+ */
+export declare function unitPrice(offers: readonly PriceOffer[], toRaw?: string, maxDecimals?: number): PriceComparison;
 /** Compact listing of one category for list_units output. */
 export interface CategoryListing {
     id: string;
