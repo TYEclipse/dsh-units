@@ -1,7 +1,7 @@
 /**
  * dsh-units — unit conversion toolbox for DeepSeek Harness.
  *
- * Three tools, zero runtime dependencies (pure arithmetic):
+ * Four tools, zero runtime dependencies (pure arithmetic):
  *   convert_unit — convert a value between two units of one category:
  *                  length, mass, temperature (affine C/F/K), area, volume
  *                  (incl. US cooking units), speed, time duration, data
@@ -15,6 +15,9 @@
  *   list_units   — discover every supported category, unit symbol and name.
  *   unit_price   — normalize 1–6 "price per unit" offers into one target
  *                  unit, rank them, and report the cheapest and the spread.
+ *   unit_sum     — add 1–12 quantities that each carry their own unit of one
+ *                  category, and report the total and the mean in a target
+ *                  unit (compensated summation, so small addends do not drift).
  *
  * Safety model: everything is pure synchronous math over a static unit
  * table — no network, no filesystem, no code execution. Invalid units,

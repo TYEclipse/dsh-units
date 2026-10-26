@@ -779,6 +779,156 @@ export function unitPrice(offers: readonly PriceOffer[], toRaw?: string, maxDeci
   }
 }
 
+/** One quantity to add: `value` of `unit`. */
+export interface SumItem {
+  value: number
+  unit: string
+}
+
+/** One normalized quantity inside a unit_sum result. */
+export interface SumRow {
+  index: number
+  value: number
+  unit: string
+  symbol: string
+  /** This quantity's contribution in the category base unit (rounded for display). */
+  base_value: number
+}
+
+/** Result of adding up quantities that share one category. */
+export interface SumResult {
+  category: string
+  base_unit: string
+  base_symbol: string
+  target_unit: string
+  target_symbol: string
+  items: SumRow[]
+  count: number
+  /** Sum of the base-unit contributions (rounded for display). */
+  base_total: number
+  /** Sum expressed in the target unit (rounded for display). */
+  total: number
+  /** Arithmetic mean in the target unit (rounded for display). */
+  mean: number
+  formula: string
+}
+
+/** Upper bound on quantities per unit_sum call. */
+export const MAX_SUM_ITEMS = 12
+
+/**
+ * Neumaier compensated summation — the double nearest to the exact sum.
+ *
+ * Naive accumulation drifts once the running total dwarfs the addend
+ * (`0.1 + 0.2 + …`), which is exactly the case for shopping lists of small
+ * quantities. The compensation term collects the rounding error of every
+ * addition, so the result no longer depends on the order of the inputs.
+ */
+function compensatedSum(values: readonly number[]): number {
+  let sum = 0
+  let compensation = 0
+  for (const value of values) {
+    const next = sum + value
+    compensation += Math.abs(sum) >= Math.abs(value)
+      ? (sum - next) + value
+      : (value - next) + sum
+    sum = next
+  }
+  return sum + compensation
+}
+
+/**
+ * Add 1–12 quantities given in any units of a single category and report the
+ * total and the mean in a target unit (default: the category base unit).
+ *
+ * Every quantity is converted to the base unit first, then summed with
+ * compensated accumulation, so mixed units and many small addends do not
+ * drift. Only linear categories are accepted: temperatures are affine (an
+ * arbitrary zero point makes a sum meaningless) and fuel economy is
+ * reciprocal — both are rejected with an explanation instead of a number that
+ * would look right and be wrong. Negative values are allowed, which makes
+ * `unit_sum` usable for differences as well as totals.
+ */
+export function unitSum(items: readonly SumItem[], toRaw?: string, maxDecimals = 6): SumResult {
+  if (!Array.isArray(items) || items.length === 0) {
+    throw new Error('items must be a non-empty array of { value, unit } objects')
+  }
+  if (items.length > MAX_SUM_ITEMS) {
+    throw new Error(`unit_sum accepts at most ${MAX_SUM_ITEMS} quantities (got ${items.length})`)
+  }
+
+  const resolved = items.map((item, index) => {
+    if (item === null || typeof item !== 'object') {
+      throw new Error(`item #${index + 1} must be an object with "value" and "unit"`)
+    }
+    if (typeof item.value !== 'number' || !Number.isFinite(item.value)) {
+      throw new Error(`item #${index + 1}: value must be a finite number (got ${String(item.value)})`)
+    }
+    if (typeof item.unit !== 'string' || item.unit.trim() === '') {
+      throw new Error(`item #${index + 1}: unit must be a unit string, e.g. "ft", "kg", "min"`)
+    }
+    const { category, unit } = resolveUnit(item.unit)
+    if (category.kind !== 'linear') {
+      const why = category.kind === 'temperature'
+        ? 'temperatures are affine — their zero point is arbitrary, so a sum of them means nothing (convert each value instead)'
+        : 'fuel economy is reciprocal (mpg vs L/100km), so its numbers do not add up'
+      throw new Error(`cannot add quantities in "${category.name}" — ${why}`)
+    }
+    const factor = unit.factor
+    if (factor === undefined) {
+      throw new Error(`internal: linear category "${category.id}" has a unit without a factor`)
+    }
+    return { index, value: item.value, category, unit, factor }
+  })
+
+  const first = resolved[0] as (typeof resolved)[number]
+  for (const entry of resolved) {
+    if (entry.category.id !== first.category.id) {
+      throw new Error(`item #${entry.index + 1} is in ${entry.category.name} (${entry.unit.name}) while item #1 is ` +
+        `in ${first.category.name} (${first.unit.name}) — every quantity must share a category`)
+    }
+  }
+
+  const base = baseUnitOf(first.category)
+  const targetUnit = toRaw !== undefined && toRaw.trim() !== '' ? resolveUnit(toRaw) : undefined
+  if (targetUnit !== undefined && targetUnit.category.id !== first.category.id) {
+    throw new Error(`cannot express a ${first.category.name} total as ${targetUnit.unit.name} ` +
+      `(${targetUnit.category.name}) — the quantities and the target unit must share a category`)
+  }
+  const target = targetUnit === undefined ? base : targetUnit.unit
+  const targetFactor = target.factor
+  if (targetFactor === undefined) {
+    throw new Error(`internal: linear category "${first.category.id}" has a unit without a factor`)
+  }
+
+  const baseValues = resolved.map((entry) => entry.value * entry.factor)
+  const baseTotal = compensatedSum(baseValues)
+  const total = baseTotal / targetFactor
+  const rows: SumRow[] = resolved.map((entry, index) => ({
+    index: entry.index,
+    value: entry.value,
+    unit: entry.unit.name,
+    symbol: entry.unit.symbol,
+    base_value: roundValue(baseValues[index] as number, maxDecimals),
+  }))
+
+  return {
+    category: first.category.name,
+    base_unit: base.name,
+    base_symbol: base.symbol,
+    target_unit: target.name,
+    target_symbol: target.symbol,
+    items: rows,
+    count: resolved.length,
+    base_total: roundValue(baseTotal, maxDecimals),
+    total: roundValue(total, maxDecimals),
+    mean: roundValue(total / resolved.length, maxDecimals),
+    formula: `Σ ${resolved.map((entry) => `${entry.value} ${entry.unit.symbol}`).join(' + ')} ` +
+      `= ${roundValue(baseTotal, maxDecimals)} ${base.symbol}` +
+      (target.symbol === base.symbol ? '' : ` = ${roundValue(total, maxDecimals)} ${target.symbol}`),
+  }
+}
+
 /** Compact listing of one category for list_units output. */
 export interface CategoryListing {
   id: string

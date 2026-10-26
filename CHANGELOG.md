@@ -2,6 +2,20 @@
 
 > 版本口径：patch 修 bug/补测试｜minor 新增用户可见功能｜major 破坏性变更。安装：`dsh plugin --profile web add github:TYEclipse/dsh-units`
 
+## [0.6.0] — 2026-10-27
+### Minor · R81
+- 新增工具 **`unit_sum`**：把同一类别下 1–12 个各带单位的量相加，返回合计与均值（`to` 可指定目标单位，默认该类别基准单位）。
+  每个量先折到基准单位、再用**补偿（Neumaier）求和**，因此 `1e16 m + 1 m − 1e16 m` 仍得 1 m，且结果与相加顺序无关；
+  逐条给出 `base_value`，另给 `formula` 便于核对。允许负值，所以同一个工具也能算差值。
+- **拒绝**温度（仿射零点，相加无意义）与油耗（倒数关系，数字不可相加），给出原因而不是一个看着对的数字；跨类别、未知单位、
+  非有限数值、超过 12 项一律报错。
+- English: new `unit_sum` tool — add 1–12 quantities that each keep their own unit of one category and get the total and the
+  mean in a target unit. Summation runs in the category base unit with compensated (Neumaier) accumulation, so results do not
+  drift with many small addends and do not depend on input order; temperatures (affine) and fuel economy (reciprocal) are
+  rejected with an explanation. Negative values are accepted (differences).
+- 测试 67 → 83（新增 16 条），覆盖率 94.66% → 95.08%（基线棘轮上调）；oracle 扩 `unit_sum` 区（`math.fsum` 正确舍入当尺子，
+  与实现算法不同；另加定义式锚点 5 ft+3 in=63 in、1 h 30 min 45 s=5445 s、1e16+1−1e16=1）。
+
 ## [0.5.0] — 2026-10-08
 ### Minor · R63
 - 新增工具 **`unit_price`**：把 1–6 条报价 `{ price, per, quantity? }` 归一到同一目标单位（默认该类别基准单位），

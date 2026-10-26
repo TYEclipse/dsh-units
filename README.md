@@ -19,6 +19,7 @@ When your agent needs to answer *"how many miles is 100 km?"*, *"is 1 MB bigger 
 | `convert_unit` | Convert `value` from one unit to another within a category. Accepts symbols or full names (case-insensitive, °C, m², "miles", "MiB" all work). Rejects unknown units and cross-category pairs with clear errors. |
 | `list_units` | List all 22 categories with every unit symbol and full name (optionally one category, e.g. `"data"` or `"temperature"`) — for discovering the exact symbols to pass to `convert_unit` and `unit_price`. |
 | `unit_price` | Normalize and compare unit prices: pass 1–6 offers as `{ price, per, quantity? }` (`quantity` defaults to 1, so `{ price: 4.29, per: "g", quantity: 500 }` is a 500 g pack) and get the price of one target unit for each offer (default: the category base unit), the cheapest offer and the spread in percent. Rejects temperatures (affine) and fuel economy (reciprocal) instead of returning a meaningless number. |
+| `unit_sum` | Add up 1–12 quantities that share one category, each in its own unit, and get the total and the mean in a target unit (default: the category base unit). Built for "5 ft 3 in + 1.2 m + 80 cm" and "1 h 30 min 45 s" without mental conversion: every quantity is converted to the base unit and summed with compensated (Neumaier) accumulation, so a long list of small addends does not drift. Negative values are allowed, so it answers differences too. Rejects temperatures (affine) and fuel economy (reciprocal). |
 
 ## Supported categories
 
@@ -54,6 +55,8 @@ When your agent needs to answer *"how many miles is 100 km?"*, *"is 1 MB bigger 
 > **v0.4.0 note (category split & disambiguation):** the old `data size / transfer` category is now **`data size`** (sizes only); rates live in **`data transfer rate`** — `mb/s` means megabyte per second (following `mb` = megabyte in the data table), while `mbps` / `mbit/s` mean megabit per second, so `100 Mbps → 12.5 MB/s` exactly. In acceleration, typed `g` stays the *gram* (mass) — gravity is `g0` / `gravity` / `g-force`; `gal` stays the US *gallon* (no galileo unit); `ph` is the *phot*, not pH.
 >
 > **v0.5.0 note (flow rate, density, unit prices):** two new categories — **`volumetric flow rate`** (`m3/s`, `m3/h`, `l/s`, `l/min`, `l/h`, `cfm`, `gpm`; a flow is *not* a volume, so `l/min` will not convert to `l`) and **`density`** (`kg/m3`, `g/l`, `g/cm3`, `g/ml`, `kg/l`, `t/m3`, `lb/ft3`, `lb/gal`). One new tool — **`unit_price`** — normalizes 1–6 offers onto one target unit and ranks them; it deliberately rejects temperature (affine zero point) and fuel economy (reciprocal), and every offer must share a category with the others and with `to`.
+>
+> **v0.6.0 note (adding quantities up):** one new tool — **`unit_sum`** — adds 1–12 quantities that each carry their own unit of one category and returns the total (and the mean) in a target unit, so "5 ft 3 in + 1.2 m + 80 cm" and "1 h 30 min 45 s" need no mental conversion. The sum runs in the category base unit through compensated (Neumaier) accumulation: adding 1 m to 10¹⁶ m and taking 10¹⁶ m away still leaves 1 m, and the total does not depend on the order of the addends. Temperatures (affine zero point) and fuel economy (reciprocal) are rejected instead of returning a meaningless number; negative values are accepted, so the same tool answers differences.
 
 ## Install
 
@@ -124,6 +127,12 @@ unit_price { offers: [{ price: 4.29, per: "g", quantity: 500 }, { price: 3.59, p
     #2 3.59 per lb → 7.914595 per kg
   cheapest: #2 at 7.914595 per kg (spread 7.755301%)
 
+unit_sum { items: [{ value: 5, unit: "ft" }, { value: 3, unit: "in" }, { value: 1.2, unit: "m" }, { value: 80, unit: "cm" }], to: "cm" }
+→ sum of 4 quantities: 5 ft + 3 in + 1.2 m + 80 cm = 360.02 cm (3.6002 m); mean 90.005 cm
+
+unit_sum { items: [{ value: 1, unit: "h" }, { value: 30, unit: "min" }, { value: 45, unit: "s" }] }
+→ sum of 3 quantities: 1 h + 30 min + 45 s = 5445 s; mean 1815 s
+
 list_units { category: "volume" }
 → volume (volume (incl. cooking), base: liter): m3 = cubic meter | l = liter | ...
 
@@ -131,7 +140,7 @@ list_units { category: "flow" }
 → flow (volumetric flow rate, base: cubic meter per second): m3/s = cubic meter per second | ... | gpm = US gallon per minute
 ```
 
-> All outputs above are captured from the built `dist/` (v0.5.0).
+> All outputs above are captured from the built `dist/` (v0.6.0).
 
 ## Configuration
 

@@ -405,6 +405,71 @@ def render_convert(value: float, from_symbol: str, to_symbol: str) -> str:
             f"({category_label(cid)}, {formula(from_symbol, to_symbol)})")
 
 
+MAX_SUM_ITEMS = 12
+
+
+def unit_sum(items: Sequence[Tuple[float, str]], to: Optional[str] = None,
+             decimals: int = 6) -> Dict[str, Any]:
+    """Expected unit_sum output for (value, unit) pairs.
+
+    The total goes through `math.fsum`, which is *correctly rounded* — a
+    different algorithm from the plugin's Neumaier compensation, so the two
+    agreeing is a real check and not a copy of the implementation.
+    """
+    assert 1 <= len(items) <= MAX_SUM_ITEMS
+    cid, _base, units, _first = unit_entry(items[0][1])
+    assert CATEGORIES[cid][1] == "linear", cid
+    for _value, unit in items:
+        other_cid, _b, _u, _symbol = unit_entry(unit)
+        assert other_cid == cid, unit
+    base = base_symbol(cid)
+    target = resolve(to) if to is not None else base
+    target_factor = units[target][1]
+
+    rows: List[Dict[str, Any]] = []
+    base_values: List[float] = []
+    for index, (value, unit) in enumerate(items):
+        symbol = resolve(unit)
+        base_value = value * units[symbol][1]
+        base_values.append(base_value)
+        rows.append({
+            "index": index,
+            "value": value,
+            "symbol": symbol,
+            "base_value": round_value(base_value, decimals),
+        })
+
+    base_total = math.fsum(base_values)
+    total = base_total / target_factor
+    rendered = " + ".join(f"{js_num(value)} {resolve(unit)}" for value, unit in items)
+    formula = (f"Σ {rendered} = {js_num(round_value(base_total, decimals))} {base}"
+               + ("" if target == base else f" = {js_num(round_value(total, decimals))} {target}"))
+    return {
+        "category": category_label(cid),
+        "base_symbol": base,
+        "target_symbol": target,
+        "items": rows,
+        "count": len(items),
+        "base_total": round_value(base_total, decimals),
+        "total": round_value(total, decimals),
+        "mean": round_value(total / len(items), decimals),
+        "formula": formula,
+    }
+
+
+def render_sum(items: Sequence[Tuple[float, str]], to: Optional[str] = None) -> str:
+    """Exact one-line text the unit_sum renderer must produce."""
+    outcome = unit_sum(items, to)
+    parts = " + ".join(f"{js_num(value)} {resolve(unit)}" for value, unit in items)
+    base = f"{js_num(outcome['base_total'])} {outcome['base_symbol']}"
+    if outcome["target_symbol"] == outcome["base_symbol"]:
+        head = base
+    else:
+        head = f"{js_num(outcome['total'])} {outcome['target_symbol']} ({base})"
+    return (f"sum of {outcome['count']} quantities: {parts} = {head}; "
+            f"mean {js_num(outcome['mean'])} {outcome['target_symbol']}")
+
+
 def render_price(offers: Sequence[Tuple[float, str, float]], to: Optional[str] = None) -> str:
     """Exact multi-line text the unit_price renderer must produce."""
     outcome = unit_price(offers, to)
@@ -480,6 +545,42 @@ def self_check() -> int:
         if not ok:
             failures += 1
             print(f"FAIL {label}: got {got!r}, want {want!r} (±{tol})")
+    # unit_sum identities: sums are definitional, so they make their own rulers.
+    sum_checks: "List[Tuple[str, float, float, float]]" = [
+        ("5 ft + 3 in = 63 in", unit_sum([(5.0, "ft"), (3.0, "in")], "in")["total"], 63.0, 0.0),
+        ("1 h + 30 min + 45 s = 5445 s",
+         unit_sum([(1.0, "h"), (30.0, "min"), (45.0, "s")], "s")["total"], 5445.0, 0.0),
+        ("1 h + 30 min + 45 s = 1.5125 h",
+         unit_sum([(1.0, "h"), (30.0, "min"), (45.0, "s")], "h")["total"], 1.5125, 0.0),
+        ("500 MB + 1 GiB = 12589934592 bit",
+         unit_sum([(500.0, "MB"), (1.0, "GiB")], "bit")["base_total"], 12_589_934_592.0, 0.0),
+        ("1 lb + 500 g + 2 oz = 1.010291 kg",
+         unit_sum([(1.0, "lb"), (500.0, "g"), (2.0, "oz")], "kg")["total"], 1.010291, 1e-6),
+        ("12 x 0.1 m = 1.2 m",
+         unit_sum([(0.1, "m")] * 12, "m")["total"], 1.2, 0.0),
+        # Compensation, not addition order: a naive accumulator loses the 1 here.
+        ("1e16 + 1 - 1e16 = 1 m",
+         unit_sum([(1e16, "m"), (1.0, "m"), (-1e16, "m")], "m")["total"], 1.0, 0.0),
+    ]
+    for label, got, want, tol in sum_checks:
+        if abs(got - want) > tol + 1e-9 * max(1.0, abs(want)):
+            failures += 1
+            print(f"FAIL {label}: got {got!r}, want {want!r} (±{tol})")
+
+    # Internal invariants that need no external value: a sum must not depend on
+    # the order of its addends, and the mean must be the total over the count.
+    for items, to in SUM_ANCHORS:
+        base_total = unit_sum(items, to)["base_total"]
+        reversed_total = unit_sum(list(reversed(items)), to)["base_total"]
+        if base_total != reversed_total:
+            failures += 1
+            print(f"FAIL order independence for {items}: {base_total!r} vs {reversed_total!r}")
+        outcome = unit_sum(items, to)
+        expected_mean = round_value(outcome["total"] / len(items))
+        if abs(outcome["mean"] - expected_mean) > 1e-9 * max(1.0, abs(expected_mean)):
+            failures += 1
+            print(f"FAIL mean for {items}: {outcome['mean']!r} vs {expected_mean!r}")
+
     # round-trip identities: every unit must survive a round trip to its base unit
     mismatches = 0
     for cid, (_base, kind, units) in CATEGORIES.items():
@@ -589,6 +690,27 @@ RENDER_PRICE: "List[Tuple[List[Tuple[float, str, float]], Optional[str]]]" = [
     ([(4.29, "g", 500), (3.59, "lb", 1)], "kg"),
 ]
 
+# unit_sum anchors: (items as (value, unit), target unit or None for base)
+SUM_ANCHORS: "List[Tuple[List[Tuple[float, str]], Optional[str]]]" = [
+    ([(5.0, "ft"), (3.0, "in"), (1.2, "m"), (80.0, "cm")], "cm"),
+    ([(5.0, "ft"), (3.0, "in"), (1.2, "m"), (80.0, "cm")], "ft"),
+    ([(5.0, "ft"), (3.0, "in"), (1.2, "m"), (80.0, "cm")], None),
+    ([(1.0, "h"), (30.0, "min"), (45.0, "s")], "h"),
+    ([(1.0, "h"), (30.0, "min"), (45.0, "s")], None),
+    ([(500.0, "MB"), (1.0, "GiB")], "MB"),
+    ([(1.0, "lb"), (500.0, "g"), (2.0, "oz")], "kg"),
+    ([(60.0, "mph"), (100.0, "km/h")], "m/s"),
+    ([(10.0, "ft"), (-2.0, "ft")], "ft"),
+    ([(1e16, "m"), (1.0, "m"), (-1e16, "m")], "m"),
+    ([(2.5, "kg")], None),
+    ([(2.0, "cup"), (250.0, "ml")], "l"),
+]
+
+RENDER_SUM: "List[Tuple[List[Tuple[float, str]], Optional[str]]]" = [
+    ([(5.0, "ft"), (3.0, "in"), (1.2, "m"), (80.0, "cm")], "cm"),
+    ([(1.0, "h"), (30.0, "min"), (45.0, "s")], None),
+]
+
 
 def print_anchors() -> None:
     linear = sum(1 for entry in CATEGORIES.values() if entry[1] == "linear")
@@ -622,6 +744,18 @@ def print_anchors() -> None:
             print(f"    #{int(quote['index']) + 1} total_target {quote['total_target']} "
                   f"price_per_target {quote['price_per_target']} formula {quote['formula']}")
     print()
+    print("# unit_sum anchors")
+    for items, to in SUM_ANCHORS:
+        outcome = unit_sum(items, to)
+        print(f"unit_sum({items}, to={to!r}) -> {outcome['category']}, count {outcome['count']}, "
+              f"base_total {outcome['base_total']} {outcome['base_symbol']}, "
+              f"total {outcome['total']} {outcome['target_symbol']}, "
+              f"mean {outcome['mean']} {outcome['target_symbol']}")
+        print(f"    formula {outcome['formula']}")
+        for row in outcome["items"]:
+            print(f"    #{int(row['index']) + 1} {row['value']} {row['symbol']} "
+                  f"base_value {row['base_value']}")
+    print()
     print("# renderer anchors (exact text, numbers must match above)")
     for value, from_symbol, to_symbol in RENDER_CONVERT:
         print(f"render_convert({value}, '{from_symbol}', '{to_symbol}') = {render_convert(value, from_symbol, to_symbol)}")
@@ -629,6 +763,8 @@ def print_anchors() -> None:
         print(f"render_price({offers}, to={to!r}) =")
         for line in render_price(offers, to).split("\n"):
             print(f"  | {line}")
+    for items, to in RENDER_SUM:
+        print(f"render_sum({items}, to={to!r}) = {render_sum(items, to)}")
 
 
 def main(argv: Sequence[str]) -> int:

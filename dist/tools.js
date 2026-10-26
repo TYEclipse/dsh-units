@@ -6,7 +6,7 @@
  * @module dsh-units/tools
  */
 import { defineTool } from '@deepseek-ai/dsh-tools';
-import { convert, listUnits, unitPrice, MAX_PRICE_OFFERS, } from "./units.js";
+import { convert, listUnits, unitPrice, unitSum, MAX_PRICE_OFFERS, MAX_SUM_ITEMS, } from "./units.js";
 function renderConvert(value) {
     const result = value;
     return `${result.value} ${result.from_symbol} = ${result.result} ${result.to_symbol} ` +
@@ -34,7 +34,14 @@ function renderPrice(value) {
         ` (spread ${result.spread_percent}%)`);
     return lines.join('\n');
 }
-/** Build both tool definitions from the resolved config. */
+function renderSum(value) {
+    const result = value;
+    const parts = result.items.map((item) => `${item.value} ${item.symbol}`).join(' + ');
+    const base = `${result.base_total} ${result.base_symbol}`;
+    const head = result.target_symbol === result.base_symbol ? base : `${result.total} ${result.target_symbol} (${base})`;
+    return `sum of ${result.count} quantities: ${parts} = ${head}; mean ${result.mean} ${result.target_symbol}`;
+}
+/** Build every tool definition from the resolved config. */
 export function buildUnitsTools(config) {
     const convert_unit = defineTool({
         name: 'convert_unit',
@@ -185,6 +192,69 @@ export function buildUnitsTools(config) {
             return unitPrice(args.offers, args.to, config.maxDecimals);
         },
     });
-    return { convert_unit, list_units, unit_price };
+    const unit_sum = defineTool({
+        name: 'unit_sum',
+        description: `Add up 1–${MAX_SUM_ITEMS} quantities that share one linear category and report the total and the mean ` +
+            'in a target unit (default: the category base unit — meter, kilogram, second, bit, …). This is the tool for ' +
+            '"how long are the three boards together: 5 ft 3 in, 1.2 m, 80 cm" or "what did the whole order weigh": ' +
+            'each quantity keeps its own unit, no mental conversion. Every quantity is converted to the base unit and ' +
+            'summed with compensated (Neumaier) accumulation, so a long list of small addends does not drift. Negative ' +
+            'values are allowed, so it also answers differences. Temperatures (affine, arbitrary zero point) and fuel ' +
+            'economy (reciprocal) are rejected with an explanation instead of a meaningless number. Pure math, no network.',
+        parameters: {
+            items: {
+                type: 'array',
+                required: true,
+                items: {
+                    type: 'object',
+                    additionalProperties: false,
+                    properties: {
+                        value: { type: 'number', required: true, description: 'Numeric quantity, e.g. 3, 1.2, -0.5.' },
+                        unit: { type: 'string', required: true, description: 'Unit symbol or name for this quantity, e.g. "ft", "m", "cm", "min".' },
+                    },
+                },
+                description: `Between 1 and ${MAX_SUM_ITEMS} quantities, e.g. [{ value: 5, unit: "ft" }, { value: 3, unit: "in" }].`,
+            },
+            to: { type: 'string', description: 'Unit to express the total in, e.g. "cm", "kg", "h". Must share a category with every quantity. Omit for the category base unit.' },
+        },
+        output: {
+            schema: {
+                type: 'object',
+                additionalProperties: false,
+                properties: {
+                    category: { type: 'string', required: true },
+                    base_unit: { type: 'string', required: true },
+                    base_symbol: { type: 'string', required: true },
+                    target_unit: { type: 'string', required: true },
+                    target_symbol: { type: 'string', required: true },
+                    count: { type: 'number', required: true },
+                    items: {
+                        type: 'array',
+                        required: true,
+                        items: {
+                            type: 'object',
+                            additionalProperties: false,
+                            properties: {
+                                index: { type: 'number', required: true },
+                                value: { type: 'number', required: true },
+                                unit: { type: 'string', required: true },
+                                symbol: { type: 'string', required: true },
+                                base_value: { type: 'number', required: true },
+                            },
+                        },
+                    },
+                    base_total: { type: 'number', required: true },
+                    total: { type: 'number', required: true },
+                    mean: { type: 'number', required: true },
+                    formula: { type: 'string', required: true },
+                },
+            },
+            render: (_args, value) => [{ type: 'text', text: renderSum(value) }],
+        },
+        async execute(args) {
+            return unitSum(args.items, args.to, config.maxDecimals);
+        },
+    });
+    return { convert_unit, list_units, unit_price, unit_sum };
 }
 //# sourceMappingURL=tools.js.map

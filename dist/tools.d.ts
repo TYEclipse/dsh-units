@@ -11,7 +11,8 @@ export interface ToolSet {
     convert_unit: ToolDefinition;
     list_units: ToolDefinition;
     unit_price: ToolDefinition;
+    unit_sum: ToolDefinition;
 }
-/** Build both tool definitions from the resolved config. */
+/** Build every tool definition from the resolved config. */
 export declare function buildUnitsTools(config: ResolvedConfig): ToolSet;
 //# sourceMappingURL=tools.d.ts.map

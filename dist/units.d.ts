@@ -94,6 +94,52 @@ export declare const MAX_PRICE_OFFERS = 6;
  * both are rejected with an explanatory error instead of a wrong number.
  */
 export declare function unitPrice(offers: readonly PriceOffer[], toRaw?: string, maxDecimals?: number): PriceComparison;
+/** One quantity to add: `value` of `unit`. */
+export interface SumItem {
+    value: number;
+    unit: string;
+}
+/** One normalized quantity inside a unit_sum result. */
+export interface SumRow {
+    index: number;
+    value: number;
+    unit: string;
+    symbol: string;
+    /** This quantity's contribution in the category base unit (rounded for display). */
+    base_value: number;
+}
+/** Result of adding up quantities that share one category. */
+export interface SumResult {
+    category: string;
+    base_unit: string;
+    base_symbol: string;
+    target_unit: string;
+    target_symbol: string;
+    items: SumRow[];
+    count: number;
+    /** Sum of the base-unit contributions (rounded for display). */
+    base_total: number;
+    /** Sum expressed in the target unit (rounded for display). */
+    total: number;
+    /** Arithmetic mean in the target unit (rounded for display). */
+    mean: number;
+    formula: string;
+}
+/** Upper bound on quantities per unit_sum call. */
+export declare const MAX_SUM_ITEMS = 12;
+/**
+ * Add 1–12 quantities given in any units of a single category and report the
+ * total and the mean in a target unit (default: the category base unit).
+ *
+ * Every quantity is converted to the base unit first, then summed with
+ * compensated accumulation, so mixed units and many small addends do not
+ * drift. Only linear categories are accepted: temperatures are affine (an
+ * arbitrary zero point makes a sum meaningless) and fuel economy is
+ * reciprocal — both are rejected with an explanation instead of a number that
+ * would look right and be wrong. Negative values are allowed, which makes
+ * `unit_sum` usable for differences as well as totals.
+ */
+export declare function unitSum(items: readonly SumItem[], toRaw?: string, maxDecimals?: number): SumResult;
 /** Compact listing of one category for list_units output. */
 export interface CategoryListing {
     id: string;

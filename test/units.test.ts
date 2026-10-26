@@ -10,7 +10,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { convert, listUnits, resolveUnit, unitPrice, CATEGORIES, MAX_PRICE_OFFERS } from '../src/units.ts'
+import { convert, listUnits, resolveUnit, unitPrice, unitSum, CATEGORIES, MAX_PRICE_OFFERS, MAX_SUM_ITEMS } from '../src/units.ts'
 
 describe('linear conversions', () => {
   it('converts length with exact factors', () => {
@@ -407,6 +407,114 @@ describe('unit_price', () => {
     expect(() => unitPrice([{ price: 1, per: 'smoots' }])).toThrow(/unknown unit/)
     const many = Array.from({ length: MAX_PRICE_OFFERS + 1 }, () => ({ price: 1, per: 'kg' }))
     expect(() => unitPrice(many)).toThrow(/at most 6 offers/)
+  })
+})
+
+describe('unit_sum', () => {
+  const boards = [
+    { value: 5, unit: 'ft' },
+    { value: 3, unit: 'in' },
+    { value: 1.2, unit: 'm' },
+    { value: 80, unit: 'cm' },
+  ]
+
+  it('adds mixed units of one category and reports the requested unit', () => {
+    const out = unitSum(boards, 'cm')
+    expect(out.category).toBe('length')
+    expect(out.base_symbol).toBe('m')
+    expect(out.target_symbol).toBe('cm')
+    expect(out.count).toBe(4)
+    expect(out.base_total).toBe(3.6002)
+    expect(out.total).toBe(360.02)
+    expect(out.mean).toBe(90.005)
+    expect(out.formula).toBe('Σ 5 ft + 3 in + 1.2 m + 80 cm = 3.6002 m = 360.02 cm')
+    expect(out.items[0]).toEqual({ index: 0, value: 5, unit: 'foot', symbol: 'ft', base_value: 1.524 })
+    expect(out.items.map((row) => row.base_value)).toEqual([1.524, 0.0762, 1.2, 0.8])
+  })
+
+  it('expresses the same total in another unit of the category', () => {
+    const out = unitSum(boards, 'ft')
+    expect(out.total).toBe(11.81168)
+    expect(out.mean).toBe(2.95292)
+    expect(out.base_total).toBe(3.6002)
+  })
+
+  it('defaults to the category base unit', () => {
+    const length = unitSum(boards)
+    expect(length.target_symbol).toBe('m')
+    expect(length.total).toBe(3.6002)
+    expect(length.mean).toBe(0.90005)
+    expect(unitSum([{ value: 2.5, unit: 'kg' }])).toMatchObject({
+      target_symbol: 'kg', count: 1, total: 2.5, mean: 2.5,
+    })
+  })
+
+  it('sums durations exactly (h + min + s)', () => {
+    const hours = unitSum([{ value: 1, unit: 'h' }, { value: 30, unit: 'min' }, { value: 45, unit: 's' }], 'h')
+    expect(hours.total).toBe(1.5125)
+    expect(hours.mean).toBe(0.504167)
+    expect(hours.base_total).toBe(5445)
+    const seconds = unitSum([{ value: 1, unit: 'h' }, { value: 30, unit: 'min' }, { value: 45, unit: 's' }])
+    expect(seconds.total).toBe(5445)
+    expect(seconds.mean).toBe(1815)
+  })
+
+  it('mixes decimal and binary data units through the bit base', () => {
+    const out = unitSum([{ value: 500, unit: 'MB' }, { value: 1, unit: 'GiB' }], 'MB')
+    expect(out.base_symbol).toBe('bit')
+    expect(out.base_total).toBe(12_589_934_592)
+    expect(out.total).toBe(1573.741824)
+    expect(out.mean).toBe(786.870912)
+  })
+
+  it('sums mass, speed and cooking volumes', () => {
+    expect(unitSum([{ value: 1, unit: 'lb' }, { value: 500, unit: 'g' }, { value: 2, unit: 'oz' }], 'kg'))
+      .toMatchObject({ total: 1.010291, mean: 0.336764 })
+    expect(unitSum([{ value: 60, unit: 'mph' }, { value: 100, unit: 'km/h' }], 'm/s'))
+      .toMatchObject({ total: 54.600178, mean: 27.300089 })
+    expect(unitSum([{ value: 2, unit: 'cup' }, { value: 250, unit: 'ml' }], 'l'))
+      .toMatchObject({ total: 0.73, mean: 0.365 })
+  })
+
+  it('accepts negative quantities, so it also answers differences', () => {
+    const out = unitSum([{ value: 10, unit: 'ft' }, { value: -2, unit: 'ft' }], 'ft')
+    expect(out.total).toBe(8)
+    expect(out.mean).toBe(4)
+    expect(out.formula).toBe('Σ 10 ft + -2 ft = 2.4384 m = 8 ft')
+  })
+
+  it('keeps the total under compensated summation instead of drifting', () => {
+    // A naive accumulator returns 0 here: 1 is lost when added to 1e16.
+    const out = unitSum([{ value: 1e16, unit: 'm' }, { value: 1, unit: 'm' }, { value: -1e16, unit: 'm' }], 'm')
+    expect(out.total).toBe(1)
+    expect(out.base_total).toBe(1)
+  })
+
+  it('does not depend on the order of the addends', () => {
+    const forward = unitSum(boards, 'ft')
+    const backward = unitSum([...boards].reverse(), 'ft')
+    expect(backward.total).toBe(forward.total)
+    expect(backward.base_total).toBe(forward.base_total)
+  })
+
+  it('rejects empty, oversized, and malformed item lists', () => {
+    expect(() => unitSum([])).toThrow(/non-empty array/)
+    const many = Array.from({ length: MAX_SUM_ITEMS + 1 }, () => ({ value: 1, unit: 'm' }))
+    expect(() => unitSum(many)).toThrow(/at most 12 quantities/)
+    expect(() => unitSum([null as unknown as { value: number; unit: string }])).toThrow(/must be an object/)
+    expect(() => unitSum([{ value: Number.NaN, unit: 'm' }])).toThrow(/finite number/)
+    expect(() => unitSum([{ value: 1, unit: '  ' }])).toThrow(/unit must be a unit string/)
+    expect(() => unitSum([{ value: 1, unit: 'smoots' }])).toThrow(/unknown unit/)
+  })
+
+  it('rejects cross-category sums and cross-category targets', () => {
+    expect(() => unitSum([{ value: 1, unit: 'm' }, { value: 1, unit: 'kg' }])).toThrow(/item #2 is in mass/)
+    expect(() => unitSum([{ value: 1, unit: 'm' }], 'kg')).toThrow(/cannot express a length total as kilogram/)
+  })
+
+  it('refuses affine temperatures and reciprocal fuel economy', () => {
+    expect(() => unitSum([{ value: 20, unit: 'c' }])).toThrow(/affine/)
+    expect(() => unitSum([{ value: 30, unit: 'mpg' }])).toThrow(/reciprocal/)
   })
 })
 

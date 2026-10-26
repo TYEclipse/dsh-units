@@ -24,8 +24,8 @@ describe('resolveConfig', () => {
 describe('buildUnitsTools', () => {
   const tools = buildUnitsTools(resolveConfig({}))
 
-  it('exposes both tools under their canonical names', () => {
-    expect(Object.keys(tools).sort()).toEqual(['convert_unit', 'list_units', 'unit_price'])
+  it('exposes every tool under its canonical name', () => {
+    expect(Object.keys(tools).sort()).toEqual(['convert_unit', 'list_units', 'unit_price', 'unit_sum'])
   })
 
   it('convert_unit executes a real conversion', async () => {
@@ -133,5 +133,48 @@ describe('buildUnitsTools', () => {
     const output = tools.list_units.output.render({ category: 'flow' }, { categories: flow.categories })
     expect(output[0]?.text).toContain('gpm = US gallon per minute')
     expect(output[0]?.text).toContain('cfm = cubic foot per minute')
+  })
+
+  it('unit_sum executes a mixed-unit total', async () => {
+    const args = {
+      items: [{ value: 5, unit: 'ft' }, { value: 3, unit: 'in' }, { value: 1.2, unit: 'm' }, { value: 80, unit: 'cm' }],
+      to: 'cm',
+    }
+    const result = await tools.unit_sum.execute(args)
+    expect(result).toMatchObject({
+      category: 'length',
+      base_symbol: 'm',
+      target_symbol: 'cm',
+      count: 4,
+      base_total: 3.6002,
+      total: 360.02,
+      mean: 90.005,
+    })
+  })
+
+  it('unit_sum rejects temperature sums as a rejected promise', async () => {
+    await expect(tools.unit_sum.execute({ items: [{ value: 20, unit: 'c' }] })).rejects.toThrow(/affine/)
+    await expect(tools.unit_sum.execute({ items: [] })).rejects.toThrow(/non-empty array/)
+  })
+
+  it('renders a sum as one line with the base-unit total in parentheses', async () => {
+    const args = {
+      items: [{ value: 5, unit: 'ft' }, { value: 3, unit: 'in' }, { value: 1.2, unit: 'm' }, { value: 80, unit: 'cm' }],
+      to: 'cm',
+    }
+    const result = await tools.unit_sum.execute(args)
+    expect(tools.unit_sum.output.render(args, result)).toEqual([{
+      type: 'text',
+      text: 'sum of 4 quantities: 5 ft + 3 in + 1.2 m + 80 cm = 360.02 cm (3.6002 m); mean 90.005 cm',
+    }])
+  })
+
+  it('renders a base-unit sum without the duplicate parenthetical', async () => {
+    const args = { items: [{ value: 1, unit: 'h' }, { value: 30, unit: 'min' }, { value: 45, unit: 's' }] }
+    const result = await tools.unit_sum.execute(args)
+    expect(tools.unit_sum.output.render(args, result)).toEqual([{
+      type: 'text',
+      text: 'sum of 3 quantities: 1 h + 30 min + 45 s = 5445 s; mean 1815 s',
+    }])
   })
 })
