@@ -405,6 +405,82 @@ def render_convert(value: float, from_symbol: str, to_symbol: str) -> str:
             f"({category_label(cid)}, {formula(from_symbol, to_symbol)})")
 
 
+# ------------------------------------------------- uncertainty (v0.7.0)
+def temp_delta_scale(symbol: str) -> float:
+    """d(target)/d(source) of an affine temperature pair — the *difference* scale.
+
+    Derived from F = C·9/5 + 32 and K = C + 273.15: an offset never applies to a
+    difference, so only the slope survives. This is the ruler for "±1 °C is
+    ±1.8 °F, not ±33.8 °F".
+    """
+    return {"c": 1.0, "f": 5.0 / 9.0, "k": 1.0}[symbol]
+
+
+LINEAR_NOTE = ("linear scale: the error scales with the same factor as the value, "
+               "so the relative error is unchanged")
+AFFINE_NOTE = ("affine scale: a temperature *difference* only scales (±1 °C = ±1.8 °F); the offset "
+               "never applies to an error, and no relative error is reported because the zero point "
+               "is arbitrary")
+RECIPROCAL_NOTE = ("reciprocal scale: each end of the interval is converted on its own, so the band "
+                   "is asymmetric and the nominal result is not its midpoint")
+
+
+def convert_with_uncertainty(value: float, error: float, from_symbol: str,
+                            to_symbol: str, decimals: Optional[int] = 6) -> Dict[str, Any]:
+    """Expected convert_unit output when an absolute ± `error` is supplied."""
+    source, target = resolve(from_symbol), resolve(to_symbol)
+    kind = None
+    units: Dict[str, Tuple[str, float]] = {}
+    for _cid, entry in CATEGORIES.items():
+        if source in entry[2] and target in entry[2]:
+            kind, units = entry[1], entry[2]
+            break
+    if kind is None:
+        raise KeyError(f"{from_symbol} -> {to_symbol}")
+
+    band: Dict[str, Any] = {"input_error": round_value(error, decimals)}
+    if value != 0:
+        band["relative_percent"] = round_value(error / abs(value) * 100, decimals)
+    if kind == "fuel":
+        low = convert(value - error, source, target, None)
+        high = convert(value + error, source, target, None)
+        band["result_low"] = round_value(min(low, high), decimals)
+        band["result_high"] = round_value(max(low, high), decimals)
+        band["symmetric"] = False
+        band["note"] = RECIPROCAL_NOTE
+    else:
+        if kind == "temperature":
+            band.pop("relative_percent", None)  # arbitrary zero point
+            scale = temp_delta_scale(source) / temp_delta_scale(target)
+        else:
+            scale = units[source][1] / units[target][1]
+        result_error = abs(error * scale)
+        raw = convert(value, source, target, None)
+        band["result_error"] = round_value(result_error, decimals)
+        band["result_low"] = round_value(raw - result_error, decimals)
+        band["result_high"] = round_value(raw + result_error, decimals)
+        band["symmetric"] = True
+        band["note"] = AFFINE_NOTE if kind == "temperature" else LINEAR_NOTE
+    return {"result": convert(value, source, target, decimals), "uncertainty": band}
+
+
+def render_convert_uncertain(value: float, error: float, from_symbol: str, to_symbol: str) -> str:
+    """Exact one-line text the convert_unit renderer must produce with `error`."""
+    _cf, _bf, _uf, source = unit_entry(from_symbol)
+    _ct, _bt, _ut, target = unit_entry(to_symbol)
+    cid = next(cid for cid, entry in CATEGORIES.items() if source in entry[2])
+    outcome = convert_with_uncertainty(value, error, from_symbol, to_symbol)
+    band = outcome["uncertainty"]
+    if band["symmetric"]:
+        return (f"{js_num(value)} ± {js_num(error)} {source} = "
+                f"{js_num(outcome['result'])} ± {js_num(band['result_error'])} {target} "
+                f"({category_label(cid)}, {formula(from_symbol, to_symbol)})")
+    return (f"{js_num(value)} ± {js_num(error)} {source} = "
+            f"{js_num(outcome['result'])} {target}, range {js_num(band['result_low'])}–"
+            f"{js_num(band['result_high'])} {target} "
+            f"({category_label(cid)}, {formula(from_symbol, to_symbol)}; band is asymmetric)")
+
+
 MAX_SUM_ITEMS = 12
 
 
@@ -581,6 +657,66 @@ def self_check() -> int:
             failures += 1
             print(f"FAIL mean for {items}: {outcome['mean']!r} vs {expected_mean!r}")
 
+    # ---- uncertainty propagation: definitional rulers (an offset never applies
+    # to a difference), plus the shape contracts that say "there is no honest
+    # number here" by omitting the field.
+    band_checks: "List[Tuple[str, float, float, float]]" = [
+        ("±1 °C = ±1.8 °F", convert_with_uncertainty(100, 1, "c", "f", None)["uncertainty"]["result_error"], 9 / 5, 1e-12),
+        ("±1 °F = ±5/9 °C", convert_with_uncertainty(212, 1, "f", "c", None)["uncertainty"]["result_error"], 5 / 9, 1e-12),
+        ("±1 K = ±1 °C", convert_with_uncertainty(300, 1, "k", "c", None)["uncertainty"]["result_error"], 1.0, 0.0),
+        ("±0.5 km = ±0.31069 mi", convert_with_uncertainty(12.3, 0.5, "km", "mi", None)["uncertainty"]["result_error"],
+         (0.5 * 1000) / MILE, 1e-12),
+        ("±0.5 in = ±12.7 mm", convert_with_uncertainty(1, 0.5, "in", "mm", None)["uncertainty"]["result_error"], 12.7, 0.0),
+        # 20 mpg is 11.7607 L/100km; the reciprocal makes −1 mpg the *larger*
+        # consumption, so the band ends are 235.2146/19 and 235.2146/21.
+        ("20 mpg −1 = 235.2145833/19 L/100km",
+         convert_with_uncertainty(20, 1, "mpg", "l/100km", None)["uncertainty"]["result_high"],
+         L100KM_PER_MPG_US / 19, 1e-12),
+        ("20 mpg +1 = 235.2145833/21 L/100km",
+         convert_with_uncertainty(20, 1, "mpg", "l/100km", None)["uncertainty"]["result_low"],
+         L100KM_PER_MPG_US / 21, 1e-12),
+    ]
+    for label, got, want, tol in band_checks:
+        if abs(got - want) > tol + 1e-9 * max(1.0, abs(want)):
+            failures += 1
+            print(f"FAIL {label}: got {got!r}, want {want!r} (±{tol})")
+
+    for value, error, from_symbol, to_symbol in UNCERTAINTY_ANCHORS:
+        band = convert_with_uncertainty(value, error, from_symbol, to_symbol)["uncertainty"]
+        kind = category_of(from_symbol)[1]
+        label = f"{value} ± {error} {from_symbol} → {to_symbol}"
+        if kind == "fuel":
+            if band["symmetric"] or "result_error" in band:
+                failures += 1
+                print(f"FAIL {label}: reciprocal band must be asymmetric with no result_error")
+            if band["result_low"] > band["result_high"]:
+                failures += 1
+                print(f"FAIL {label}: band endpoints are not ordered")
+            if error > 0 and abs(abs(band["result_low"] - convert(value, from_symbol, to_symbol, None))
+                                 - abs(band["result_high"] - convert(value, from_symbol, to_symbol, None))) < 1e-12:
+                failures += 1
+                print(f"FAIL {label}: reciprocal band claims to be symmetric")
+        else:
+            if not band["symmetric"]:
+                failures += 1
+                print(f"FAIL {label}: linear/affine band must be symmetric")
+            half = abs(band["result_high"] - band["result_low"]) / 2
+            if abs(half - band["result_error"]) > 3e-6 * max(1.0, half):
+                failures += 1
+                print(f"FAIL {label}: half-width {band['result_error']!r} ≠ (high−low)/2 {half!r}")
+            if kind == "temperature" and "relative_percent" in band:
+                failures += 1
+                print(f"FAIL {label}: a relative error has no meaning on an affine scale")
+            if kind != "temperature" and value != 0 and "relative_percent" not in band:
+                failures += 1
+                print(f"FAIL {label}: relative error missing for a non-zero linear value")
+            if value == 0 and "relative_percent" in band:
+                failures += 1
+                print(f"FAIL {label}: relative error claimed at value 0")
+        if error == 0 and not (band["result_low"] == band["result_high"] == convert(value, from_symbol, to_symbol)):
+            failures += 1
+            print(f"FAIL {label}: a zero error must collapse the band onto the result")
+
     # round-trip identities: every unit must survive a round trip to its base unit
     mismatches = 0
     for cid, (_base, kind, units) in CATEGORIES.items():
@@ -711,6 +847,18 @@ RENDER_SUM: "List[Tuple[List[Tuple[float, str]], Optional[str]]]" = [
     ([(1.0, "h"), (30.0, "min"), (45.0, "s")], None),
 ]
 
+# convert_unit uncertainty anchors: (value, error, from, to)
+UNCERTAINTY_ANCHORS: "List[Tuple[float, float, str, str]]" = [
+    (12.3, 0.5, "km", "mi"), (1.5, 0.05, "kg", "lb"), (2.5, 0.25, "GiB", "MB"),
+    (100.0, 1.0, "c", "f"), (350.0, 2.0, "f", "c"), (300.0, 1.5, "k", "c"),
+    (0.0, 2.0, "c", "f"), (10.0, 0.0, "m", "ft"),
+    (20.0, 1.0, "mpg", "l/100km"), (8.5, 0.1, "l/100km", "mpg"), (3.4, 0.2, "gpm", "l/min"),
+]
+
+RENDER_UNCERTAIN: "List[Tuple[float, float, str, str]]" = [
+    (12.3, 0.5, "km", "mi"), (100.0, 1.0, "c", "f"), (20.0, 1.0, "mpg", "l/100km"),
+]
+
 
 def print_anchors() -> None:
     linear = sum(1 for entry in CATEGORIES.values() if entry[1] == "linear")
@@ -756,9 +904,25 @@ def print_anchors() -> None:
             print(f"    #{int(row['index']) + 1} {row['value']} {row['symbol']} "
                   f"base_value {row['base_value']}")
     print()
+    print("# convert_unit uncertainty anchors (value, error, from, to)")
+    for value, error, from_symbol, to_symbol in UNCERTAINTY_ANCHORS:
+        outcome = convert_with_uncertainty(value, error, from_symbol, to_symbol)
+        band = outcome["uncertainty"]
+        fields = " ".join(f"{key}={val}" for key, val in band.items() if key != "note")
+        print(f"convert({value} ± {error}, '{from_symbol}', '{to_symbol}') = {outcome['result']} | {fields}")
+    mpg = convert_with_uncertainty(20, 1, "mpg", "l/100km")
+    mpg_band = mpg["uncertainty"]
+    print(f"# reciprocal band asymmetry: {mpg['result']} − {mpg_band['result_low']} = "
+          f"{round(mpg['result'] - mpg_band['result_low'], 6)}, "
+          f"{mpg_band['result_high']} − {mpg['result']} = "
+          f"{round(mpg_band['result_high'] - mpg['result'], 6)}")
+    print()
     print("# renderer anchors (exact text, numbers must match above)")
     for value, from_symbol, to_symbol in RENDER_CONVERT:
         print(f"render_convert({value}, '{from_symbol}', '{to_symbol}') = {render_convert(value, from_symbol, to_symbol)}")
+    for value, error, from_symbol, to_symbol in RENDER_UNCERTAIN:
+        print(f"render_convert({value} ± {error}, '{from_symbol}', '{to_symbol}') = "
+              f"{render_convert_uncertain(value, error, from_symbol, to_symbol)}")
     for offers, to in RENDER_PRICE:
         print(f"render_price({offers}, to={to!r}) =")
         for line in render_price(offers, to).split("\n"):

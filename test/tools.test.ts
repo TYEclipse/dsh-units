@@ -178,3 +178,56 @@ describe('buildUnitsTools', () => {
     }])
   })
 })
+
+describe('convert_unit with an uncertainty band', () => {
+  const tools = buildUnitsTools(resolveConfig({}))
+
+  it('carries the band through the tool surface', async () => {
+    const result = await tools.convert_unit.execute({ value: 12.3, error: 0.5, from: 'km', to: 'mi' })
+    expect(result).toMatchObject({
+      result: 7.642866,
+      uncertainty: {
+        input_error: 0.5, relative_percent: 4.065041, result_error: 0.310686,
+        result_low: 7.33218, result_high: 7.953551, symmetric: true,
+      },
+    })
+  })
+
+  it('adds no band when error is omitted', async () => {
+    const result = await tools.convert_unit.execute({ value: 12.3, from: 'km', to: 'mi' })
+    expect('uncertainty' in result).toBe(false)
+  })
+
+  it('rejects a negative error as a rejected promise', async () => {
+    await expect(tools.convert_unit.execute({ value: 12.3, error: -0.5, from: 'km', to: 'mi' }))
+      .rejects.toThrow(/finite number ≥ 0/)
+  })
+
+  it('renders a linear band as value ± error on both sides', async () => {
+    const args = { value: 12.3, error: 0.5, from: 'km', to: 'mi' }
+    const result = await tools.convert_unit.execute(args)
+    expect(tools.convert_unit.output.render(args, result)).toEqual([{
+      type: 'text',
+      text: '12.3 ± 0.5 km = 7.642866 ± 0.310686 mi (length, × 0.621371192237334)',
+    }])
+  })
+
+  it('renders a temperature band with the difference scale', async () => {
+    const args = { value: 100, error: 1, from: 'c', to: 'f' }
+    const result = await tools.convert_unit.execute(args)
+    expect(tools.convert_unit.output.render(args, result)).toEqual([{
+      type: 'text',
+      text: '100 ± 1 c = 212 ± 1.8 f (temperature, × 9/5 + 32)',
+    }])
+  })
+
+  it('renders a reciprocal band as a range and says it is asymmetric', async () => {
+    const args = { value: 20, error: 1, from: 'mpg', to: 'l/100km' }
+    const result = await tools.convert_unit.execute(args)
+    expect(tools.convert_unit.output.render(args, result)).toEqual([{
+      type: 'text',
+      text: '20 ± 1 mpg = 11.760729 l/100km, range 11.200694–12.379715 l/100km ' +
+        '(fuel economy, 235.214583 ÷ x → x; band is asymmetric)',
+    }])
+  })
+})

@@ -53,6 +53,53 @@ export interface ConversionResult {
  * Throws on unknown units, cross-category pairs, or non-finite values.
  */
 export declare function convert(value: number, fromRaw: string, toRaw: string, maxDecimals?: number): ConversionResult;
+/** Absolute-error propagation for one conversion. */
+export interface Uncertainty {
+    /** The ± half-width as given, in the source unit. */
+    input_error: number;
+    /**
+     * 100 × error ÷ |value|. Absent when the ratio is undefined (`value` is 0)
+     * or meaningless (temperatures have an arbitrary zero point, so "±1 % of
+     * 20 °C" claims nothing about the physical quantity).
+     */
+    relative_percent?: number;
+    /**
+     * Half-width in the target unit. Present only when the mapping is
+     * symmetric — linear factors and affine temperature scales. Absent for
+     * reciprocal (fuel economy) conversions, where the interval is not centred
+     * on the nominal result.
+     */
+    result_error?: number;
+    /** Converts of `value − error` and `value + error`, ordered. */
+    result_low: number;
+    result_high: number;
+    symmetric: boolean;
+    note: string;
+}
+/** A conversion result that also carries an uncertainty band. */
+export interface UncertainConversion extends ConversionResult {
+    uncertainty: Uncertainty;
+}
+/**
+ * Convert a value that carries an absolute ± error and report what the error
+ * becomes in the target unit.
+ *
+ * Three mapping classes behave differently, and getting them mixed up is the
+ * whole point of this function:
+ *
+ * - **linear** (`km → mi`): the error scales by exactly the same factor as the
+ *   value, so the relative error is unchanged;
+ * - **temperature** (`°C → °F`): the *offset* does not apply to a difference —
+ *   ±1 °C is ±1.8 °F, not ±33.8 °F — so the error scales by 9/5 alone. A
+ *   relative error is deliberately not reported: the zero point is arbitrary;
+ * - **fuel economy** (`mpg → L/100km`): reciprocal, so scaling the error is
+ *   wrong. Both ends of the interval are converted and reported as a range;
+ *   the result is asymmetric and has no `result_error`.
+ *
+ * Every boundary is reported as a fact of the result shape (`relative_percent`
+ * / `result_error` absent) rather than filled with a plausible number.
+ */
+export declare function convertWithUncertainty(value: number, error: number, fromRaw: string, toRaw: string, maxDecimals?: number): UncertainConversion;
 /** One offer for unit-price math: `price` buys `quantity` (default 1) of `per`. */
 export interface PriceOffer {
     price: number;

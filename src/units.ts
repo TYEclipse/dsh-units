@@ -575,13 +575,16 @@ const TEMP_FORMULAS: Readonly<Record<string, string>> = {
   'k->f': '(x − 273.15) × 9/5 + 32',
 }
 
-/** Round for display: decimals for magnitudes ≥ 1, significant digits below. */
+/** Round for display: decimals for magnitudes ≥ 1, significant digits below.
+ * A rounded zero is normalized to +0: `Number((-1e-9).toFixed(6))` is `-0`, which
+ * JSON.stringify writes as `"0"` and a strict round-trip check then reports as
+ * lost information. */
 function roundValue(value: number, maxDecimals: number): number {
   if (!Number.isFinite(value)) return value
   if (value === 0) return 0
   const magnitude = Math.abs(value)
-  if (magnitude >= 1) return Number(value.toFixed(maxDecimals))
-  return Number(value.toPrecision(maxDecimals))
+  const rounded = magnitude >= 1 ? Number(value.toFixed(maxDecimals)) : Number(value.toPrecision(maxDecimals))
+  return rounded === 0 ? 0 : rounded
 }
 
 /** Result of a successful conversion. */
@@ -638,6 +641,136 @@ export function convert(value: number, fromRaw: string, toRaw: string, maxDecima
     result: roundValue(result, maxDecimals),
     formula,
     category: from.category.name,
+  }
+}
+
+/** Absolute-error propagation for one conversion. */
+export interface Uncertainty {
+  /** The ± half-width as given, in the source unit. */
+  input_error: number
+  /**
+   * 100 × error ÷ |value|. Absent when the ratio is undefined (`value` is 0)
+   * or meaningless (temperatures have an arbitrary zero point, so "±1 % of
+   * 20 °C" claims nothing about the physical quantity).
+   */
+  relative_percent?: number
+  /**
+   * Half-width in the target unit. Present only when the mapping is
+   * symmetric — linear factors and affine temperature scales. Absent for
+   * reciprocal (fuel economy) conversions, where the interval is not centred
+   * on the nominal result.
+   */
+  result_error?: number
+  /** Converts of `value − error` and `value + error`, ordered. */
+  result_low: number
+  result_high: number
+  symmetric: boolean
+  note: string
+}
+
+/** A conversion result that also carries an uncertainty band. */
+export interface UncertainConversion extends ConversionResult {
+  uncertainty: Uncertainty
+}
+
+/** d(target)/d(source) of an affine temperature pair — the *difference* scale. */
+function tempDeltaScale(symbol: string): number {
+  switch (symbol) {
+    case 'c': return 1
+    case 'f': return 5 / 9
+    case 'k': return 1
+    default: throw new Error(`internal: unsupported temperature unit "${symbol}"`)
+  }
+}
+
+/** Unrounded conversion between two already-resolved units. */
+function rawConvert(value: number, from: UnitDef, to: UnitDef, kind: Category['kind']): number {
+  if (kind === 'temperature') return celsiusTo(toCelsius(value, from.symbol), to.symbol)
+  if (kind === 'fuel') return fuelFromBase(fuelToBase(value, from.symbol), to.symbol)
+  if (from.factor === undefined || to.factor === undefined) {
+    throw new Error('internal: a unit of this linear category has no factor')
+  }
+  return (value * from.factor) / to.factor
+}
+
+/**
+ * Convert a value that carries an absolute ± error and report what the error
+ * becomes in the target unit.
+ *
+ * Three mapping classes behave differently, and getting them mixed up is the
+ * whole point of this function:
+ *
+ * - **linear** (`km → mi`): the error scales by exactly the same factor as the
+ *   value, so the relative error is unchanged;
+ * - **temperature** (`°C → °F`): the *offset* does not apply to a difference —
+ *   ±1 °C is ±1.8 °F, not ±33.8 °F — so the error scales by 9/5 alone. A
+ *   relative error is deliberately not reported: the zero point is arbitrary;
+ * - **fuel economy** (`mpg → L/100km`): reciprocal, so scaling the error is
+ *   wrong. Both ends of the interval are converted and reported as a range;
+ *   the result is asymmetric and has no `result_error`.
+ *
+ * Every boundary is reported as a fact of the result shape (`relative_percent`
+ * / `result_error` absent) rather than filled with a plausible number.
+ */
+export function convertWithUncertainty(
+  value: number,
+  error: number,
+  fromRaw: string,
+  toRaw: string,
+  maxDecimals = 6,
+): UncertainConversion {
+  const nominal = convert(value, fromRaw, toRaw, maxDecimals) // validates units, category, value
+  if (typeof error !== 'number' || !Number.isFinite(error) || error < 0) {
+    throw new Error(`error must be a finite number ≥ 0 — the ± half-width in ${nominal.from_symbol} ` +
+      `(got ${String(error)})`)
+  }
+  const from = resolveUnit(fromRaw)
+  const to = resolveUnit(toRaw)
+  const kind = from.category.kind
+
+  if (kind === 'fuel') {
+    const lowRaw = rawConvert(value - error, from.unit, to.unit, kind)
+    const highRaw = rawConvert(value + error, from.unit, to.unit, kind)
+    if (!Number.isFinite(lowRaw) || !Number.isFinite(highRaw) || !(lowRaw > 0) || !(highRaw > 0)) {
+      throw new Error(`cannot propagate ±${error} ${from.unit.symbol}: the interval reaches or crosses zero, ` +
+        `where the reciprocal conversion has no finite positive value in ${to.unit.symbol}`)
+    }
+    return {
+      ...nominal,
+      uncertainty: {
+        input_error: roundValue(error, maxDecimals),
+        ...(value === 0 ? {} : { relative_percent: roundValue((error / Math.abs(value)) * 100, maxDecimals) }),
+        result_low: roundValue(Math.min(lowRaw, highRaw), maxDecimals),
+        result_high: roundValue(Math.max(lowRaw, highRaw), maxDecimals),
+        symmetric: false,
+        note: 'reciprocal scale: each end of the interval is converted on its own, so the band is asymmetric ' +
+          'and the nominal result is not its midpoint',
+      },
+    }
+  }
+
+  const scale = kind === 'temperature'
+    ? tempDeltaScale(from.unit.symbol) / tempDeltaScale(to.unit.symbol)
+    : (from.unit.factor as number) / (to.unit.factor as number)
+  const resultError = Math.abs(error * scale)
+  const rawNominal = rawConvert(value, from.unit, to.unit, kind)
+  const relative = value === 0 || kind === 'temperature'
+    ? undefined
+    : (error / Math.abs(value)) * 100
+  return {
+    ...nominal,
+    uncertainty: {
+      input_error: roundValue(error, maxDecimals),
+      ...(relative === undefined ? {} : { relative_percent: roundValue(relative, maxDecimals) }),
+      result_error: roundValue(resultError, maxDecimals),
+      result_low: roundValue(rawNominal - resultError, maxDecimals),
+      result_high: roundValue(rawNominal + resultError, maxDecimals),
+      symmetric: true,
+      note: kind === 'temperature'
+        ? 'affine scale: a temperature *difference* only scales (±1 °C = ±1.8 °F); the offset never applies ' +
+          'to an error, and no relative error is reported because the zero point is arbitrary'
+        : 'linear scale: the error scales with the same factor as the value, so the relative error is unchanged',
+    },
   }
 }
 

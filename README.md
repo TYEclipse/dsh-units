@@ -115,6 +115,15 @@ convert_unit { value: 100, from: "cfm", to: "m3/h" }
 convert_unit { value: 1, from: "lb/ft3", to: "kg/m3" }
 → 1 lb/ft3 = 16.018463 kg/m3 (density, × 16.018463373960138)
 
+convert_unit { value: 12.3, error: 0.5, from: "km", to: "mi" }
+→ 12.3 ± 0.5 km = 7.642866 ± 0.310686 mi (length, × 0.621371192237334)
+
+convert_unit { value: 100, error: 1, from: "c", to: "f" }
+→ 100 ± 1 c = 212 ± 1.8 f (temperature, × 9/5 + 32)
+
+convert_unit { value: 20, error: 1, from: "mpg", to: "l/100km" }
+→ 20 ± 1 mpg = 11.760729 l/100km, range 11.200694–12.379715 l/100km (fuel economy, 235.214583 ÷ x → x; band is asymmetric)
+
 unit_price { offers: [{ price: 3.99, per: "lb" }, { price: 8.5, per: "kg" }], to: "kg" }
 → unit prices per kg (mass):
     #1 3.99 per lb → 8.796444 per kg
@@ -140,7 +149,21 @@ list_units { category: "flow" }
 → flow (volumetric flow rate, base: cubic meter per second): m3/s = cubic meter per second | ... | gpm = US gallon per minute
 ```
 
-> All outputs above are captured from the built `dist/` (v0.6.0).
+> All outputs above are captured from the built `dist/` (v0.7.0).
+
+> **v0.7.0 note (uncertainty):** pass `error` to convert a value that carries an absolute ± half-width
+> (`"12.3 ± 0.5 km"` → `error: 0.5`). The answer keeps the three mapping classes apart instead of
+> scaling everything blindly:
+>
+> - **linear** units scale the error by the same factor as the value, so `relative_percent` is unchanged;
+> - **temperature** is affine — the `+32` offset applies to a *point*, never to a difference, so ±1 °C is
+>   ±1.8 °F (not ±33.8 °F), and no relative error is reported because the zero point is arbitrary;
+> - **fuel economy** is reciprocal, so a scaled error would be wrong: the two ends of the interval are
+>   converted and returned as `result_low`/`result_high` with `symmetric: false` (a band that would reach
+>   zero is rejected — there is no finite mpg for 0 L/100km).
+>
+> Fields that have no honest value are **absent** rather than filled with a plausible number:
+> `relative_percent` is missing at value 0 and for temperatures, `result_error` is missing for fuel economy.
 
 ## Configuration
 

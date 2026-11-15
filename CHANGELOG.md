@@ -2,6 +2,10 @@
 
 > 版本口径：patch 修 bug/补测试｜minor 新增用户可见功能｜major 破坏性变更。安装：`dsh plugin --profile web add github:TYEclipse/dsh-units`
 
+## [0.7.0] — 2026-11-16
+### Minor · R101
+- [自主进化] R101 convert_unit uncertainty: linear scaling, affine temperature differences (±1 °C = ±1.8 °F), reciprocal fuel bands as intervals
+
 ## [0.6.0] — 2026-10-27
 ### Minor · R81
 - 新增工具 **`unit_sum`**：把同一类别下 1–12 个各带单位的量相加，返回合计与均值（`to` 可指定目标单位，默认该类别基准单位）。

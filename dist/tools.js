@@ -6,9 +6,19 @@
  * @module dsh-units/tools
  */
 import { defineTool } from '@deepseek-ai/dsh-tools';
-import { convert, listUnits, unitPrice, unitSum, MAX_PRICE_OFFERS, MAX_SUM_ITEMS, } from "./units.js";
+import { convert, convertWithUncertainty, listUnits, unitPrice, unitSum, MAX_PRICE_OFFERS, MAX_SUM_ITEMS, } from "./units.js";
 function renderConvert(value) {
     const result = value;
+    const band = result.uncertainty;
+    if (band !== undefined && band.symmetric) {
+        return `${result.value} ± ${band.input_error} ${result.from_symbol} = ` +
+            `${result.result} ± ${band.result_error} ${result.to_symbol} (${result.category}, ${result.formula})`;
+    }
+    if (band !== undefined) {
+        return `${result.value} ± ${band.input_error} ${result.from_symbol} = ` +
+            `${result.result} ${result.to_symbol}, range ${band.result_low}–${band.result_high} ` +
+            `${result.to_symbol} (${result.category}, ${result.formula}; band is asymmetric)`;
+    }
     return `${result.value} ${result.from_symbol} = ${result.result} ${result.to_symbol} ` +
         `(${result.category}, ${result.formula})`;
 }
@@ -53,11 +63,16 @@ export function buildUnitsTools(config) {
             'dpi, 16 px base font), volumetric flow rate (m³/s, L/min, CFM, US gpm), density (kg/m³, g/cm³, ' +
             'lb/ft³, lb/gal), or fuel economy (L/100km ↔ mpg US/UK ↔ km/L). Handles affine temperatures ' +
             '(C/F/K) and reciprocal fuel economy correctly, keeping full precision internally and rounding only ' +
-            'for display. Pure math, no network. Use list_units to discover accepted unit symbols and names.',
+            'for display. Pure math, no network. Use list_units to discover accepted unit symbols and names. ' +
+            'Pass `error` to convert a value that carries an absolute ± uncertainty: you get the converted result ' +
+            'plus the band in the target unit — the relative error is unchanged for linear units, a temperature ' +
+            '*difference* scales by 9/5 rather than by the affine formula, and reciprocal fuel economy is reported ' +
+            'as an asymmetric range instead of a fake ±.',
         parameters: {
             value: { type: 'number', required: true, description: 'Numeric value to convert, e.g. 100, -40, 1.5.' },
             from: { type: 'string', required: true, description: 'Source unit symbol or name, e.g. "km", "miles", "MB", "MiB", "celsius", "km/h".' },
             to: { type: 'string', required: true, description: 'Target unit symbol or name, e.g. "mi", "GB", "fahrenheit", "m/s". Must be in the same category as `from`.' },
+            error: { type: 'number', description: 'Optional absolute ± half-width, in the `from` unit (e.g. 0.5 for "12.3 ± 0.5 km"). Must be ≥ 0. Omit for a bare conversion.' },
         },
         output: {
             schema: {
@@ -72,12 +87,28 @@ export function buildUnitsTools(config) {
                     result: { type: 'number', required: true },
                     formula: { type: 'string', required: true },
                     category: { type: 'string', required: true },
+                    uncertainty: {
+                        type: 'object',
+                        additionalProperties: false,
+                        description: 'Present only when `error` was supplied.',
+                        properties: {
+                            input_error: { type: 'number', required: true },
+                            relative_percent: { type: 'number', description: 'Absent when value is 0 or the category is temperature.' },
+                            result_error: { type: 'number', description: 'Absent for reciprocal (fuel economy) conversions.' },
+                            result_low: { type: 'number', required: true },
+                            result_high: { type: 'number', required: true },
+                            symmetric: { type: 'boolean', required: true },
+                            note: { type: 'string', required: true },
+                        },
+                    },
                 },
             },
             render: (_args, value) => [{ type: 'text', text: renderConvert(value) }],
         },
         async execute(args) {
-            return convert(args.value, args.from, args.to, config.maxDecimals);
+            if (args.error === undefined)
+                return convert(args.value, args.from, args.to, config.maxDecimals);
+            return convertWithUncertainty(args.value, args.error, args.from, args.to, config.maxDecimals);
         },
     });
     const list_units = defineTool({
